@@ -7,15 +7,16 @@ dotenv.config();
 
 export async function carregarVetores() {
   const conn = await mysql.createConnection({
-    host: process.env.MYSQL_HOST,
-    user: process.env.MYSQL_USER,
-    password: process.env.MYSQL_PASSWORD,
-    database: process.env.MYSQL_DATABASE,
+    host: process.env.MYSQL_HOST, 
+    user: process.env.MYSQL_USER,  
+    password: process.env.MYSQL_PASSWORD, 
+    database: process.env.MYSQL_DATABASE, 
+    ssl: { rejectUnauthorized: true } 
   });
 
   const [rows] = await conn.execute("SELECT training FROM agent");
 
-  const textos = rows.map(r => r.conteudo).join("\n");
+  const textos = rows.map(r => r.training).join("\n");
   const splitter = new RecursiveCharacterTextSplitter({ chunkSize: 500 });
   const docs = await splitter.createDocuments([textos]);
 

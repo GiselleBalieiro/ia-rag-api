@@ -6,13 +6,13 @@ dotenv.config();
 
 const app = express();
 
-app.use(cors({ origin: 'http://localhost:5173' }));
+app.use(cors({ origin: 'https://agent-gules-alpha.vercel.app/agents' }));
 app.use(express.json());
 
 
 const fetchContextoViaPHP = async (id) => {
   try {
-    const response = await axios.get(`http://localhost/agent_api/api/agent.php?id=${id}`);
+    const response = await axios.get(`https://api-php-ff2c9710eabd.herokuapp.com/agent.php?id=${id}`);
     if (!response.data.success) throw new Error(response.data.message);
     return response.data.training;
   } catch (err) {
@@ -55,7 +55,7 @@ app.post("/perguntar", async (req, res) => {
       headers: {
         Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
         "Content-Type": "application/json",
-        "HTTP-Referer": "http://localhost",
+        "HTTP-Referer": "https://agent-gules-alpha.vercel.app/agents",
         "X-Title": "IA com RAG"
       }
     });
