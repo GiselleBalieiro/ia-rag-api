@@ -6,7 +6,7 @@ dotenv.config();
 
 const app = express();
 
-app.use(cors({ origin: 'https://agent-gules-alpha.vercel.app/agents' }));
+app.use(cors({ origin: 'https://agent-5mygpia1j-gisellebalieiros-projects.vercel.app' }));
 app.use(express.json());
 
 
@@ -55,7 +55,7 @@ app.post("/perguntar", async (req, res) => {
       headers: {
         Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
         "Content-Type": "application/json",
-        "HTTP-Referer": "https://agent-gules-alpha.vercel.app/agents",
+        "HTTP-Referer": "https://agent-5mygpia1j-gisellebalieiros-projects.vercel.app/agents",
         "X-Title": "IA com RAG"
       }
     });
@@ -66,4 +66,5 @@ app.post("/perguntar", async (req, res) => {
   }
 });
 
-app.listen(3001, () => console.log("IA RAG ouvindo na porta 3001"));
+const PORT = process.env.PORT || 3001;
+app.listen(PORT, () => console.log(`IA RAG ouvindo na porta ${PORT}`));
