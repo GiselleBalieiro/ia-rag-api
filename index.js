@@ -2,13 +2,19 @@ import express from "express";
 import axios from "axios";
 import dotenv from "dotenv";
 import cors from "cors";
+
+import { pool } from "./db.js"; 
+
 dotenv.config();
 
 const app = express();
 
 app.use(cors({ origin: 'https://agent-gules-alpha.vercel.app/agents' }));
 app.use(express.json());
-
+async function buscarNoBanco() {
+  const [rows] = await pool.query('SELECT NOW() AS agora');
+  return rows[0];
+}
 
 const fetchContextoViaPHP = async (id) => {
   try {
@@ -28,6 +34,9 @@ app.post("/perguntar", async (req, res) => {
   }
 
   try {
+    const bancoData = await buscarNoBanco();
+    console.log("Data atual do banco:", bancoData);
+
     const contexto = await fetchContextoViaPHP(id);
 
     const messages = [
@@ -65,5 +74,3 @@ app.post("/perguntar", async (req, res) => {
     res.status(500).json({ success: false, message: err.message });
   }
 });
-
-app.listen(3001, () => console.log("IA RAG ouvindo na porta 3001"));
