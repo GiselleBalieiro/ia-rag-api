@@ -9,7 +9,7 @@ dotenv.config();
 
 const app = express();
 
-app.use(cors({ origin: 'https://agent-gules-alpha.vercel.app/agents' }));
+app.use(cors({ origin: 'https://agent-5mygpia1j-gisellebalieiros-projects.vercel.app' }));
 app.use(express.json());
 async function buscarNoBanco() {
   const [rows] = await pool.query('SELECT NOW() AS agora');
@@ -64,7 +64,7 @@ app.post("/perguntar", async (req, res) => {
       headers: {
         Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
         "Content-Type": "application/json",
-        "HTTP-Referer": "https://agent-gules-alpha.vercel.app/agents",
+        "HTTP-Referer": "https://agent-5mygpia1j-gisellebalieiros-projects.vercel.app/agents",
         "X-Title": "IA com RAG"
       }
     });
