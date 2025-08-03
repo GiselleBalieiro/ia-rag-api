@@ -12,8 +12,13 @@ const app = express();
 app.use(cors({ origin: 'https://agent-5mygpia1j-gisellebalieiros-projects.vercel.app' }));
 app.use(express.json());
 async function buscarNoBanco() {
-  const [rows] = await pool.query('SELECT NOW() AS agora');
-  return rows[0];
+  try {
+    const [rows] = await pool.query('SELECT NOW() AS agora');
+    return rows[0];
+  } catch (err) {
+    console.error("Erro ao conectar no banco:", err);
+    throw err;
+  }
 }
 
 const fetchContextoViaPHP = async (id) => {
@@ -73,4 +78,10 @@ app.post("/perguntar", async (req, res) => {
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
+});
+
+const PORT = process.env.PORT || 3000;
+
+app.listen(PORT, () => {
+  console.log(`Servidor rodando na porta ${PORT}`);
 });
