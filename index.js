@@ -9,7 +9,12 @@ dotenv.config();
 
 const app = express();
 
-app.use(cors({ origin: 'https://agent-5mygpia1j-gisellebalieiros-projects.vercel.app' }));
+app.use(cors({
+  origin: [
+    'https://agent-5mygpia1j-gisellebalieiros-projects.vercel.app',
+    'https://agent-gules-alpha.vercel.app'
+  ]
+}));
 app.use(express.json());
 async function buscarNoBanco() {
   try {
