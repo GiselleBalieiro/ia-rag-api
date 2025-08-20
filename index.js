@@ -3,16 +3,20 @@ import axios from "axios";
 import dotenv from "dotenv";
 import cors from "cors";
 
+import { create } from 'venom-bot';
+
 import { pool } from "./db.js"; 
 
 dotenv.config();
 
+const sessions = {};
 const app = express();
 
 app.use(cors({
   origin: [
     'https://agent-5mygpia1j-gisellebalieiros-projects.vercel.app',
-    'https://agent-gules-alpha.vercel.app'
+    'https://agent-gules-alpha.vercel.app',
+    'http://localhost:5173'
   ]
 }));
 app.use(express.json());
@@ -83,6 +87,43 @@ app.post("/perguntar", async (req, res) => {
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
+});
+
+
+app.post("/conectar", async (req, res) => {
+  const { number, agentId } = req.body;
+
+  if (!number || !agentId) return res.status(400).json({ message: "Número e agentId obrigatórios" });
+
+  if (sessions[number]) return res.json({ message: "Sessão já existe", qr: sessions[number].qr });
+
+  create(
+    `${number}`,
+    (base64Qrimg) => {
+      console.log("QR gerado:", base64Qrimg);
+      sessions[number] = { qr: base64Qrimg, agentId };
+      res.json({ qr: base64Qrimg }); 
+    },
+    undefined,
+    { logQR: false }
+  ).then((client) => {
+    sessions[number].client = client;
+
+    client.onMessage(async (message) => {
+      try {
+        const respostaIA = await axios.post("http://localhost:3000/perguntar", {
+          pergunta: message.body,
+          id: agentId,
+        });
+
+        const resposta = respostaIA.data.resposta;
+        await client.sendText(message.from, resposta);
+      } catch (err) {
+        console.error(err);
+        await client.sendText(message.from, "Erro ao processar mensagem");
+      }
+    });
+  }).catch(err => console.error(err));
 });
 
 const PORT = process.env.PORT || 3000;
