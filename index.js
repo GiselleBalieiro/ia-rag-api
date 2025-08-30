@@ -2,10 +2,10 @@ import express from "express";
 import axios from "axios";
 import dotenv from "dotenv";
 import cors from "cors";
-
-import { create } from 'venom-bot';
-
 import { pool } from "./db.js"; 
+import { create } from 'venom-bot';
+import logger from "./logger.js";
+import sessionLogger from "./sessionLogger.js";
 
 dotenv.config();
 
@@ -33,12 +33,27 @@ async function buscarNoBanco() {
 const fetchContextoViaPHP = async (id) => {
   try {
     const response = await axios.get(`https://api-php-ff2c9710eabd.herokuapp.com/agent.php?id=${id}`);
-    if (!response.data.success) throw new Error(response.data.message);
-    return response.data.training;
+    if (
+      !response.data ||
+      !response.data.data ||
+      !Array.isArray(response.data.data) ||
+      !response.data.data[0] ||
+      !response.data.data[0].training
+    ) {
+      throw new Error("Treinamento não encontrado para o agente.");
+    }
+    return response.data.data[0].training;
   } catch (err) {
     throw new Error("Erro ao buscar contexto via PHP: " + err.message);
   }
 };
+
+function validarPayloadPerguntar(payload) {
+  if (!payload) return false;
+  if (!payload.pergunta || !payload.id) return false;
+  return true;
+}
+
 
 app.post("/perguntar", async (req, res) => {
   const { pergunta, id } = req.body;
@@ -52,6 +67,8 @@ app.post("/perguntar", async (req, res) => {
     console.log("Data atual do banco:", bancoData);
 
     const contexto = await fetchContextoViaPHP(id);
+    console.log(`Treinamento retornado para id=${id}:`, contexto);
+
 
     const messages = [
       {
@@ -97,33 +114,73 @@ app.post("/conectar", async (req, res) => {
 
   if (sessions[number]) return res.json({ message: "Sessão já existe", qr: sessions[number].qr });
 
+
   create(
     `${number}`,
     (base64Qrimg) => {
-      console.log("QR gerado:", base64Qrimg);
-      sessions[number] = { qr: base64Qrimg, agentId };
-      res.json({ qr: base64Qrimg }); 
+      sessions[number] = { qr: base64Qrimg, agentId, status: "qr" };
+      res.json({ qr: base64Qrimg });
+
+      sessionLogger.info(`Sessão ${number}: QR gerado`);
     },
-    undefined,
+    (statusSession, session) => {
+      sessionLogger.info(`Sessão ${session}: ${statusSession}`);
+      if (sessions[number]) {
+        sessions[number].status = statusSession;
+      }
+    },
     { logQR: false }
   ).then((client) => {
     sessions[number].client = client;
 
     client.onMessage(async (message) => {
       try {
-        const respostaIA = await axios.post("http://localhost:3000/perguntar", {
+        if (message.isGroupMsg) return;
+        if (message.fromMe) return;
+
+        if (!message.body || typeof message.body !== "string" || !message.body.trim()) {
+          sessionLogger.info(
+            `Mensagem bloqueada de ${message.from}: mensagem sem texto ou inválida.`
+          );
+          return;
+        }
+
+        const payload = {
           pergunta: message.body,
           id: agentId,
-        });
+        };
+
+        if (!validarPayloadPerguntar(payload)) {
+          sessionLogger.error(
+            `Payload inválido para /perguntar: pergunta='${payload.pergunta}', id='${payload.id}'`
+          );
+          await client.sendText(message.from, "Erro: pergunta e ID são obrigatórios.");
+          return;
+        }
+
+        const respostaIA = await axios.post("http://localhost:3000/perguntar", payload);
 
         const resposta = respostaIA.data.resposta;
         await client.sendText(message.from, resposta);
+
+        logger.info(`Mensagem de ${message.from}: ${message.body}`);
+        logger.info(`Resposta enviada: ${resposta}`);
+
       } catch (err) {
-        console.error(err);
+        if (err.response) {
+          logger.error(`Erro API [${err.response.status}]: ${JSON.stringify(err.response.data)}`);
+        } else if (err.request) {
+          logger.error(`Sem resposta da API: ${err.request._header}`);
+        } else {
+          logger.error(`Erro inesperado: ${err.message}`);
+        }
+
         await client.sendText(message.from, "Erro ao processar mensagem");
       }
     });
-  }).catch(err => console.error(err));
+  }).catch(err => {
+    sessionLogger.error(`Erro na sessão ${number}: ${err.message}`);
+  });
 });
 
 const PORT = process.env.PORT || 3000;
