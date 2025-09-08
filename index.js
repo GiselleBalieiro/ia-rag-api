@@ -54,6 +54,15 @@ function validarPayloadPerguntar(payload) {
   return true;
 }
 
+async function atualizarStatusSessao(agentId, status) {
+  try {
+    await pool.query("UPDATE agent SET status = ? WHERE id = ?", [status, agentId]);
+    sessionLogger.info(`Status do agente ${agentId} atualizado para ${status}`);
+  } catch (err) {
+    sessionLogger.error(`Erro ao atualizar status do agente ${agentId}: ${err.message}`);
+  }
+}
+
 
 app.post("/perguntar", async (req, res) => {
   const { pergunta, id } = req.body;
@@ -123,10 +132,23 @@ app.post("/conectar", async (req, res) => {
 
       sessionLogger.info(`Sessão ${number}: QR gerado`);
     },
-    (statusSession, session) => {
+    async (statusSession, session) => {
       sessionLogger.info(`Sessão ${session}: ${statusSession}`);
       if (sessions[number]) {
         sessions[number].status = statusSession;
+      }
+
+      const statusConectado = [
+        "isLogged", "successChat", "Connected", "Successfully connected!", "Successfully main page!"
+      ];
+      const statusDesconectado = [
+        "desconnectedMobile", "notLogged", "qrReadFail", "autocloseCalled", "Page Closed", "Disconnected", "Disconnected by cell phone!", "QRCode Fail"
+      ];
+
+      if (statusConectado.includes(statusSession)) {
+        await atualizarStatusSessao(agentId, 1);
+      } else if (statusDesconectado.includes(statusSession)) {
+        await atualizarStatusSessao(agentId, 0);
       }
     },
     { logQR: false }
@@ -181,6 +203,20 @@ app.post("/conectar", async (req, res) => {
   }).catch(err => {
     sessionLogger.error(`Erro na sessão ${number}: ${err.message}`);
   });
+});
+
+app.post("/desconectar", async (req, res) => {
+  const { number } = req.body;
+  if (!number || !sessions[number] || !sessions[number].client) {
+    return res.status(400).json({ success: false, message: "Sessão não encontrada." });
+  }
+  try {
+    await sessions[number].client.logout();
+    delete sessions[number];
+    res.json({ success: true, message: "Sessão desconectada com sucesso." });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
 });
 
 const PORT = process.env.PORT || 3000;
