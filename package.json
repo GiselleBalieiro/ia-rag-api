@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
+    "start": "node index.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
@@ -14,11 +15,15 @@
     "@langchain/openai": "^0.6.2",
     "axios": "^1.11.0",
     "cors": "^2.8.5",
-    "dotenv": "^17.2.1",
+    "dotenv": "^17.2.2",
+    "err-code": "^3.0.1",
     "express": "^5.1.0",
     "langchain": "^0.3.30",
     "mysql2": "^3.14.3",
+    "puppeteer-extra": "^3.3.6",
+    "sharp": "^0.34.3",
     "venom-bot": "^5.3.0",
-    "winston": "^3.17.0"
+    "winston": "^3.17.0",
+    "ws": "^8.18.3"
   }
 }
