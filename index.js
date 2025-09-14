@@ -17,8 +17,14 @@ app.use(cors({
     'https://agent-5mygpia1j-gisellebalieiros-projects.vercel.app',
     'https://agent-gules-alpha.vercel.app',
     'http://localhost:5173'
-  ]
+  ],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true 
 }));
+
+app.options('*', cors());
+
 app.use(express.json());
 async function buscarNoBanco() {
   try {
