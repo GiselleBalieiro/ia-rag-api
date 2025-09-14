@@ -23,8 +23,6 @@ app.use(cors({
   credentials: true 
 }));
 
-app.options('*', cors());
-
 app.use(express.json());
 async function buscarNoBanco() {
   try {
@@ -157,7 +155,24 @@ app.post("/conectar", async (req, res) => {
         await atualizarStatusSessao(agentId, 0);
       }
     },
-    { logQR: false }
+      {
+    logQR: false,
+    headless: 'new', 
+    browserArgs: [
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-dev-shm-usage",
+      "--disable-accelerated-2d-canvas",
+      "--no-first-run",
+      "--no-zygote",
+      "--disable-gpu",
+      "--disable-software-rasterizer",
+      "--single-process",
+      "--disable-extensions",
+      "--disable-default-apps",
+      "--headless=new" 
+    ]
+  }
   ).then((client) => {
     sessions[number].client = client;
 
