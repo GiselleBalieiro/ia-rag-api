@@ -201,7 +201,7 @@ app.post("/conectar", async (req, res) => {
           return;
         }
 
-        const respostaIA = await axios.post("http://localhost:3000/perguntar", payload);
+        const respostaIA = await axios.post("http://ia-rag-api.vercel.app/perguntar", payload);
 
         const resposta = respostaIA.data.resposta;
         await client.sendText(message.from, resposta);
