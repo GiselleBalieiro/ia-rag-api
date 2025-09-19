@@ -34,16 +34,12 @@ async function buscarNoBanco() {
   }
 }
 
-const fetchContextoViaPHP = async (id) => {
+const fetchContextoViaPHP = async (id, userId) => {
   try {
-    const response = await axios.get(`https://api-php-ff2c9710eabd.herokuapp.com/agent.php?id=${id}`);
-    if (
-      !response.data ||
-      !response.data.data ||
-      !Array.isArray(response.data.data) ||
-      !response.data.data[0] ||
-      !response.data.data[0].training
-    ) {
+    const response = await axios.get(`https://api-php-ff2c9710eabd.herokuapp.com/agent.php?id=${id}`, {
+      headers: { Authorization: `Bearer ${req.headers.authorization?.split(' ')[1]}` }
+    });
+    if (!response.data || !response.data.data || !Array.isArray(response.data.data) || !response.data.data[0].training) {
       throw new Error("Treinamento não encontrado para o agente.");
     }
     return response.data.data[0].training;
@@ -68,7 +64,7 @@ async function atualizarStatusSessao(agentId, status) {
 }
 
 
-app.post("/perguntar", async (req, res) => {
+app.post("/perguntar", authenticateJWT, async (req, res)  => {
   const { pergunta, id } = req.body;
 
   if (!pergunta || !id) {
@@ -79,7 +75,7 @@ app.post("/perguntar", async (req, res) => {
     const bancoData = await buscarNoBanco();
     console.log("Data atual do banco:", bancoData);
 
-    const contexto = await fetchContextoViaPHP(id);
+    const contexto = await fetchContextoViaPHP(id, req.user.user_id);
     console.log(`Treinamento retornado para id=${id}:`, contexto);
 
 
@@ -120,7 +116,7 @@ app.post("/perguntar", async (req, res) => {
 });
 
 
-app.post("/conectar", async (req, res) => {
+app.post("/conectar",  authenticateJWT, async (req, res)=> {
   const { number, agentId } = req.body;
 
   if (!number || !agentId) return res.status(400).json({ message: "Número e agentId obrigatórios" });
@@ -226,7 +222,7 @@ app.post("/conectar", async (req, res) => {
   });
 });
 
-app.post("/desconectar", async (req, res) => {
+app.post("/desconectar", authenticateJWT, async (req, res) => {
   const { number } = req.body;
   if (!number || !sessions[number] || !sessions[number].client) {
     return res.status(400).json({ success: false, message: "Sessão não encontrada." });
