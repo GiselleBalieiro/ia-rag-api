@@ -7,6 +7,8 @@ import { create } from 'venom-bot';
 import logger from "./logger.js";
 import sessionLogger from "./sessionLogger.js";
 
+import { authenticateJWT } from './auth.js'; 
+
 dotenv.config();
 
 const sessions = {};
