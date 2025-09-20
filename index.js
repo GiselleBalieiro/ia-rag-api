@@ -36,10 +36,10 @@ async function buscarNoBanco() {
   }
 }
 
-const fetchContextoViaPHP = async (id, userId) => {
+const fetchContextoViaPHP = async (id, userId, token) => {
   try {
     const response = await axios.get(`https://api-php-ff2c9710eabd.herokuapp.com/agent.php?id=${id}`, {
-      headers: { Authorization: `Bearer ${req.headers.authorization?.split(' ')[1]}` }
+      headers: { Authorization: `Bearer ${token}` }
     });
     if (!response.data || !response.data.data || !Array.isArray(response.data.data) || !response.data.data[0].training) {
       throw new Error("Treinamento não encontrado para o agente.");
@@ -77,7 +77,7 @@ app.post("/perguntar", authenticateJWT, async (req, res)  => {
     const bancoData = await buscarNoBanco();
     console.log("Data atual do banco:", bancoData);
 
-    const contexto = await fetchContextoViaPHP(id, req.user.user_id);
+    const contexto = await fetchContextoViaPHP(id, req.user.user_id, req.headers.authorization?.split(' ')[1]);
     console.log(`Treinamento retornado para id=${id}:`, contexto);
 
 
