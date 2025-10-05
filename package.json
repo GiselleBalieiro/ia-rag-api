@@ -23,12 +23,24 @@
     "jsonwebtoken": "^9.0.2",
     "langchain": "^0.3.30",
     "mysql2": "^3.14.3",
-    "puppeteer": "^24.20.0",
+    "puppeteer": "^24.23.0",
     "puppeteer-extra": "^3.3.6",
+    "qrcode": "^1.5.4",
+    "qrcode-terminal": "^0.12.0",
     "rimraf": "^6.0.1",
     "sharp": "^0.34.3",
+    "socket.io": "^4.8.1",
     "venom-bot": "^5.3.0",
+    "whatsapp-web.js": "^1.34.1",
     "winston": "^3.17.0",
     "ws": "^8.18.3"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/GiselleBalieiro/ia-rag-api.git"
+  },
+  "bugs": {
+    "url": "https://github.com/GiselleBalieiro/ia-rag-api/issues"
+  },
+  "homepage": "https://github.com/GiselleBalieiro/ia-rag-api#readme"
 }

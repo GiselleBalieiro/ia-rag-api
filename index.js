@@ -2,12 +2,14 @@ import express from "express";
 import axios from "axios";
 import dotenv from "dotenv";
 import cors from "cors";
-import { pool } from "./db.js"; 
-import { create } from 'venom-bot';
+import { pool } from "./db.js";
 import logger from "./logger.js";
 import sessionLogger from "./sessionLogger.js";
+import { authenticateJWT } from "./auth.js";
 
-import { authenticateJWT } from './auth.js'; 
+import qrcode from "qrcode";
+import pkg from "whatsapp-web.js";
+const { Client, LocalAuth } = pkg;
 
 dotenv.config();
 
@@ -59,9 +61,9 @@ function validarPayloadPerguntar(payload) {
 async function atualizarStatusSessao(agentId, status) {
   try {
     await pool.query("UPDATE agent SET status = ? WHERE id = ?", [status, agentId]);
-    sessionLogger.info(`Status do agente ${agentId} atualizado para ${status}`);
+    logger.info(`Status do agente ${agentId} atualizado para ${status}`);
   } catch (err) {
-    sessionLogger.error(`Erro ao atualizar status do agente ${agentId}: ${err.message}`);
+    logger.error(`Erro ao atualizar status do agente ${agentId}: ${err.message}`);
   }
 }
 
@@ -118,110 +120,132 @@ app.post("/perguntar", authenticateJWT, async (req, res)  => {
 });
 
 
-app.post("/conectar",  authenticateJWT, async (req, res)=> {
+app.post("/conectar", async (req, res) => {
   const { number, agentId } = req.body;
-
   if (!number || !agentId) return res.status(400).json({ message: "Número e agentId obrigatórios" });
 
-  if (sessions[number]) return res.json({ message: "Sessão já existe", qr: sessions[number].qr });
-
-
-  create(
-    `${number}`,
-    (base64Qrimg) => {
-      sessions[number] = { qr: base64Qrimg, agentId, status: "qr" };
-      res.json({ qr: base64Qrimg });
-
-      sessionLogger.info(`Sessão ${number}: QR gerado`);
-    },
-    async (statusSession, session) => {
-      sessionLogger.info(`Sessão ${session}: ${statusSession}`);
-      if (sessions[number]) {
-        sessions[number].status = statusSession;
-      }
-
-      const statusConectado = [
-        "isLogged", "successChat", "Connected", "Successfully connected!", "Successfully main page!"
-      ];
-      const statusDesconectado = [
-        "desconnectedMobile", "notLogged", "qrReadFail", "autocloseCalled", "Page Closed", "Disconnected", "Disconnected by cell phone!", "QRCode Fail"
-      ];
-
-      if (statusConectado.includes(statusSession)) {
-        await atualizarStatusSessao(agentId, 1);
-      } else if (statusDesconectado.includes(statusSession)) {
-        await atualizarStatusSessao(agentId, 0);
-      }
-    },
-      {
-    logQR: false,
-    headless: 'new', 
-    browserArgs: [
-      "--no-sandbox",
-      "--disable-setuid-sandbox",
-      "--disable-dev-shm-usage",
-      "--disable-accelerated-2d-canvas",
-      "--no-first-run",
-      "--no-zygote",
-      "--disable-gpu",
-      "--disable-software-rasterizer",
-      "--single-process",
-      "--disable-extensions",
-      "--disable-default-apps",
-      "--headless=new" 
-    ]
-  }
-  ).then((client) => {
-    sessions[number].client = client;
-
-    client.onMessage(async (message) => {
+  // Se sessão já existe
+  if (sessions[number]) {
+    const status = sessions[number].status;
+    if (status === "inicializando") return res.json({ message: "Sessão em inicialização, aguarde QR...", qr: sessions[number].qr });
+    if (status === "conectado" || status === "autenticado") return res.json({ message: "Sessão já conectada", qr: sessions[number].qr });
+    if (status === "desconectado") {
+      // Reconectar manualmente
+      sessions[number].status = "inicializando";
       try {
-        if (message.isGroupMsg) return;
-        if (message.fromMe) return;
-
-        if (!message.body || typeof message.body !== "string" || !message.body.trim()) {
-          sessionLogger.info(
-            `Mensagem bloqueada de ${message.from}: mensagem sem texto ou inválida.`
-          );
-          return;
-        }
-
-        const payload = {
-          pergunta: message.body,
-          id: agentId,
-        };
-
-        if (!validarPayloadPerguntar(payload)) {
-          sessionLogger.error(
-            `Payload inválido para /perguntar: pergunta='${payload.pergunta}', id='${payload.id}'`
-          );
-          await client.sendText(message.from, "Erro: pergunta e ID são obrigatórios.");
-          return;
-        }
-
-        const respostaIA = await axios.post("http://ia-rag-api.vercel.app/perguntar", payload);
-
-        const resposta = respostaIA.data.resposta;
-        await client.sendText(message.from, resposta);
-
-        logger.info(`Mensagem de ${message.from}: ${message.body}`);
-        logger.info(`Resposta enviada: ${resposta}`);
-
+        await sessions[number].client.initialize();
       } catch (err) {
-        if (err.response) {
-          logger.error(`Erro API [${err.response.status}]: ${JSON.stringify(err.response.data)}`);
-        } else if (err.request) {
-          logger.error(`Sem resposta da API: ${err.request._header}`);
-        } else {
-          logger.error(`Erro inesperado: ${err.message}`);
-        }
+        console.error(`Erro ao reinicializar client: ${err.message}`);
+      }
+      return res.json({ message: "Reconectando sessão..." });
+    }
+  }
 
-        await client.sendText(message.from, "Erro ao processar mensagem");
+  // Criar novo client
+  const client = new Client({
+    authStrategy: new LocalAuth({ dataPath: `./sessions/${number}` }),
+    puppeteer: {
+      headless: true,
+      args: [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-accelerated-2d-canvas",
+        "--no-first-run",
+        "--no-zygote",
+        "--disable-gpu",
+        "--disable-software-rasterizer",
+        "--single-process",
+        "--disable-extensions",
+        "--disable-default-apps"
+      ]
+    }
+  });
+
+  sessions[number] = { client, agentId, status: "inicializando", qr: null, listenersAdded: false };
+
+  // Adicionar listeners apenas uma vez
+  if (!sessions[number].listenersAdded) {
+
+    let qrSent = false;
+    client.on("qr", async (qr) => {
+      if (!qrSent) {
+        const base64Qrimg = await qrcode.toDataURL(qr);
+        sessions[number].qr = base64Qrimg;
+        qrSent = true;
+        if (!res.headersSent) res.json({ qr: base64Qrimg });
       }
     });
-  }).catch(err => {
-    sessionLogger.error(`Erro na sessão ${number}: ${err.message}`);
-  });
+
+    client.on("authenticated", () => {
+      sessions[number].status = "autenticado";
+      console.info(`Sessão ${number}: autenticado`);
+    });
+
+    client.on("ready", async () => {
+      sessions[number].status = "conectado";
+      console.info(`Sessão ${number}: conectado`);
+      await atualizarStatusSessao(agentId, 1);
+    });
+
+    client.on("disconnected", async (reason) => {
+      console.warn(`Sessão ${number} desconectada: ${reason}`);
+      sessions[number].status = "desconectado";
+      await atualizarStatusSessao(agentId, 0);
+
+      if (reason === "LOGOUT") {
+        console.info(`Sessão ${number} precisa de novo login (QR).`);
+
+        // Evitar destruir client imediatamente
+        setTimeout(async () => {
+          try {
+            if (sessions[number]?.client) {
+              await sessions[number].client.destroy();
+              console.info(`Client ${number} destruído com segurança`);
+            }
+          } catch (err) {
+            console.error(`Erro ao destruir client: ${err.message}`);
+          }
+        }, 1000); // Pequeno delay garante que tarefas pendentes terminem
+      }
+    });
+
+    client.on("auth_failure", (msg) => {
+      console.error(`Falha de autenticação (${number}): ${msg}`);
+      sessions[number].status = "desconectado";
+      if (!res.headersSent) res.status(401).json({ message: "Falha de autenticação no WhatsApp" });
+    });
+
+    client.on("message", async (message) => {
+      try {
+        if (message.fromMe || message.isStatus || message.isGroupMsg) return;
+        const texto = message.body?.trim();
+        if (!texto) return;
+
+        const payload = { pergunta: texto, id: agentId };
+        const respostaIA = await axios.post("http://ia-rag-api.vercel.app/perguntar", payload);
+        const resposta = respostaIA.data.resposta;
+
+        await client.sendMessage(message.from, resposta);
+        console.info(`Mensagem de ${message.from}: ${texto}`);
+        console.info(`Resposta enviada: ${resposta}`);
+      } catch (err) {
+        console.error(`Erro processando mensagem: ${err.message}`);
+        await client.sendMessage(message.from, "Erro ao processar mensagem.");
+      }
+    });
+
+    sessions[number].listenersAdded = true;
+  }
+
+  // Inicializa client
+  try {
+    await client.initialize();
+  } catch (err) {
+    console.error(`Erro ao inicializar sessão ${number}: ${err.message}`);
+    sessions[number].status = "desconectado";
+    if (!res.headersSent) res.status(500).json({ message: "Erro ao criar sessão" });
+  }
 });
 
 app.post("/desconectar", authenticateJWT, async (req, res) => {
@@ -238,10 +262,22 @@ app.post("/desconectar", authenticateJWT, async (req, res) => {
   }
 });
 
-// const PORT = process.env.PORT || 3000;
+app.get("/status", authenticateJWT, (req, res) => {
+  const { number } = req.query;
+  if (!number) return res.status(400).json({ message: "Número obrigatório" });
 
-// app.listen(PORT, () => {
-//   console.log(`Servidor rodando na porta ${PORT}`);
-// });
+  const session = sessions[number];
+  if (!session) {
+    return res.json({ status: "desconectado", qr: null });
+  }
 
-export default app; 
+  return res.json({ status: session.status, qr: session.qr || null });
+});
+
+const PORT = process.env.PORT || 3000;
+
+app.listen(PORT, () => {
+  console.log(`Servidor rodando na porta ${PORT}`);
+});
+
+// export default app; 
