@@ -24,8 +24,8 @@ app.use(
 
 app.use(express.json());
 
-app.use('/perguntar', perguntasRouter);
-app.use('/conectar', whatsappRouter);
+app.use('/', perguntasRouter);
+app.use('/', whatsappRouter);
 
 
 (async () => {
