@@ -1,14 +1,24 @@
-import makeWASocket, {
-  useMultiFileAuthState,
-  fetchLatestBaileysVersion,
-  DisconnectReason,
-  Browsers,
-} from '@whiskeysockets/baileys';
+import Baileys from '@whiskeysockets/baileys';
+
+const {
+    default: makeWASocket,
+    fetchLatestBaileysVersion,
+    DisconnectReason,
+    Browsers,
+} = Baileys;
+
+import { useMongoDBAuthState } from './mongo-auth-store.js';
+
 import Pino from 'pino';
 import qrcode from 'qrcode';
 import axios from 'axios';
-import path from 'path';
-import fs from 'fs'; 
+import { MongoClient } from 'mongodb';
+import { Boom } from '@hapi/boom'; 
+import { buscarAgentesParaRestaurar } from './function.js';
+
+const MONGO_URL = process.env.MONGO_URL;
+
+let mongoClient;
 
 let whatsappStatusMap = {};
 const activeSockets = {};
@@ -21,16 +31,27 @@ export function getWhatsappStatus(id) {
 }
 
 export async function startWhatsApp(id, attempt = 0) {
+  if (!MONGO_URL) {
+      throw new Error("A variável de ambiente MONGO_URL não foi configurada na Vercel.");
+  }
+
+  if (!mongoClient) {
+      mongoClient = new MongoClient(MONGO_URL, {});
+      await mongoClient.connect();
+      console.log("Conectado ao MongoDB Atlas.");
+  }
+  
+  const collection = mongoClient.db("baileys_sessions_db").collection("sessions");
+
   try {
-    const sessionPath = path.join('./sessions', `agente-${id}`);
-    const { state, saveCreds } = await useMultiFileAuthState(sessionPath);
-    
+    const { state, saveCreds, clearCreds } = await useMongoDBAuthState(collection, id);
+
     const { version } = await fetchLatestBaileysVersion();
     const logger = Pino({ level: 'silent' });
 
     const sock = makeWASocket({
       version,
-      auth: state,
+      auth: state, 
       logger,
       printQRInTerminal: false,
       browser: Browsers.windows('Chrome'),
@@ -66,7 +87,7 @@ export async function startWhatsApp(id, attempt = 0) {
         
         } else if (reason === DisconnectReason.loggedOut) {
           console.log(`Sessão encerrada permanentemente para agente ${id}. Requer novo QR Code.`);
-          fs.rmSync(sessionPath, { recursive: true, force: true });
+          await clearCreds();
         
         } else {
           const nextAttempt = attempt + 1;
@@ -86,14 +107,11 @@ export async function startWhatsApp(id, attempt = 0) {
     });
 
     sock.ev.on('messages.upsert', async (msg) => {
-
        const message = msg.messages[0];
        if (!message.message || message.key.fromMe) return;
 
        const from = message.key.remoteJid;
-       const text =
-         message.message.conversation ||
-         message.message.extendedTextMessage?.text;
+       const text = message.message.conversation || message.message.extendedTextMessage?.text;
        if (!text) return;
 
        console.log(`${from}: ${text}`);
@@ -101,7 +119,7 @@ export async function startWhatsApp(id, attempt = 0) {
        try {
          const response = await axios.post(
            'https://ia-rag-api.vercel.app/perguntar',
-           { pergunta: text, id: id, },
+           { pergunta: text, id: id },
            { headers: { 'Content-Type': 'application/json' } }
          );
 
@@ -116,6 +134,7 @@ export async function startWhatsApp(id, attempt = 0) {
 
     sock.ev.on('creds.update', saveCreds);
     return sock;
+
   } catch (err) {
     console.error(`Erro ao iniciar WhatsApp para agente ${id}:`, err?.message || err);
     whatsappStatusMap[id] = { status: 'erro', qr: null, error: err?.message };
@@ -142,13 +161,13 @@ export async function conectarWhatsApp(req, res) {
     res.json({
       success: true,
       message:
-        'Conexão com o WhatsApp iniciada! Veja o QR Code no console do servidor.',
+        'Conexão com o WhatsApp iniciada! Aguarde o status mudar para "qr" ou "conectado".',
     });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
 }
-import { buscarAgentesParaRestaurar } from './function.js';
+
 export async function restaurarSessoesWhatsApp() {
   const agentes = await buscarAgentesParaRestaurar();
   for (const agente of agentes) {
