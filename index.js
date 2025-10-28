@@ -2,8 +2,11 @@ import express from 'express';
 import dotenv from 'dotenv';
 import cors from 'cors';
 import { restaurarSessoesWhatsApp } from './src/controllers/whatsapp.js';
+
+import authRouter from "./src/routes/authRouter.js";
 import perguntasRouter from './src/routes/perguntarRouter.js';
 import whatsappRouter from './src/routes/whatsappRouter.js';
+import agentRouter from './src/routes/agentRouter.js';
 
 dotenv.config();
 
@@ -26,7 +29,8 @@ app.use(express.json());
 
 app.use('/', perguntasRouter);
 app.use('/', whatsappRouter);
-
+app.use('/agent', agentRouter);
+app.use("/user", authRouter);
 
 (async () => {
   try {
