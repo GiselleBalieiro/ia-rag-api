@@ -13,7 +13,7 @@ import Pino from 'pino';
 import qrcode from 'qrcode';
 import axios from 'axios';
 import { MongoClient } from 'mongodb';
-import { Boom } from '@hapi/boom';
+import { Boom } from '@hapi/boom'; 
 import { buscarAgentesParaRestaurar, getOwnerPhone } from './function.js';
 import { blockNumber, unblockNumber, isNumberBlocked, getBlockInfo, detectHumanRequest } from './blockedNumbers.js';
 
@@ -31,7 +31,7 @@ export function getWhatsappStatus(id) {
   return whatsappStatusMap;
 }
 
-export async function startWhatsApp(id, attempt = 0, isRestoring = false) {
+export async function startWhatsApp(id, attempt = 0) {
   if (!MONGO_URL) {
       throw new Error("A variável de ambiente MONGO_URL não foi configurada na Vercel.");
   }
@@ -46,16 +46,6 @@ export async function startWhatsApp(id, attempt = 0, isRestoring = false) {
 
   try {
     const { state, saveCreds, clearCreds } = await useMongoDBAuthState(collection, id);
-
-    if (isRestoring) {
-      const hasCredentials = state.creds && state.creds.me;
-      if (!hasCredentials) {
-        console.log(`⏭Pulando agente ${id} - sem credenciais salvas (precisa escanear QR)`);
-        whatsappStatusMap[id] = { status: 'desconectado', qr: null };
-        return null;
-      }
-      console.log(`Restaurando sessão existente para agente ${id}`);
-    }
 
     const { version } = await fetchLatestBaileysVersion();
     const logger = Pino({ level: 'silent' });
@@ -109,7 +99,7 @@ export async function startWhatsApp(id, attempt = 0, isRestoring = false) {
             console.log(
               `Tentando reconectar agente ${id} em ${delay}ms (tentativa ${nextAttempt})`,
             );
-            setTimeout(() => startWhatsApp(id, nextAttempt, false), delay);
+            setTimeout(() => startWhatsApp(id, nextAttempt), delay);
           } else {
             console.error(`Máximo de tentativas de reconexão atingido para agente ${id}`);
           }
@@ -279,7 +269,7 @@ export async function startWhatsApp(id, attempt = 0, isRestoring = false) {
 
          const reply = response.data.resposta || 'Não consegui gerar uma resposta no momento.';
          await sock.sendMessage(from, { text: reply });
-         console.log(`[${id}] IA respondeu para ${from}: ${reply.substring(0, 100)}${reply.length > 100 ? '...' : ''}`);
+          console.log(`IA respondeu: ${reply}`);
        } catch (err) {
          console.error('Erro ao consultar IA:', err.message);
          await sock.sendMessage(from, { text: 'Não consegui falar com o servidor da IA agora.' });
@@ -293,13 +283,12 @@ export async function startWhatsApp(id, attempt = 0, isRestoring = false) {
     console.error(`Erro ao iniciar WhatsApp para agente ${id}:`, err?.message || err);
     whatsappStatusMap[id] = { status: 'erro', qr: null, error: err?.message };
 
-    if (!isRestoring) {
-      const nextAttempt = attempt + 1;
-      if (nextAttempt <= 5) {
-        const delay = Math.min(30000, 2000 * Math.pow(2, attempt));
-        console.log(`Retry startWhatsApp para agente ${id} em ${delay}ms (tentativa ${nextAttempt})`);
-        setTimeout(() => startWhatsApp(id, nextAttempt, false), delay);
-      }
+
+    const nextAttempt = attempt + 1;
+    if (nextAttempt <= 5) {
+      const delay = Math.min(30000, 2000 * Math.pow(2, attempt));
+      console.log(`Retry startWhatsApp para agente ${id} em ${delay}ms (tentativa ${nextAttempt})`);
+      setTimeout(() => startWhatsApp(id, nextAttempt), delay);
     }
   }
 }
@@ -325,23 +314,13 @@ export async function conectarWhatsApp(req, res) {
 }
 
 export async function restaurarSessoesWhatsApp() {
-  console.log('Iniciando restauração de sessões WhatsApp...');
+
   const agentes = await buscarAgentesParaRestaurar();
-
-  if (!agentes || agentes.length === 0) {
-    console.log('Nenhum agente com status ativo para restaurar.');
-    return;
-  }
-
-  console.log(`Encontrados ${agentes.length} agente(s) ativo(s). Verificando sessões salvas...`);
 
   for (const agente of agentes) {
     if (agente.id) {
-      try {
-        await startWhatsApp(agente.id, 0, true);
-      } catch (err) {
-        console.error(`Erro ao restaurar agente ${agente.id}:`, err.message);
-      }
+      startWhatsApp(agente.id);
+      console.log(`Restaurando sessão WhatsApp para agente ${agente.id}`);
     }
   }
 
