@@ -383,7 +383,7 @@ export async function startWhatsApp(id, attempt = 0) {
         try {
           const response = await axios.post(
             'https://ia-rag-api.vercel.app/perguntar',
-            { pergunta: text, id: id },
+            { pergunta: text, id: id, userId: from },
             { headers: { 'Content-Type': 'application/json' } },
           );
 
