@@ -28,15 +28,15 @@ export const buscarAgentesParaRestaurar = async () => {
 export const getOwnerPhone = async (id) => {
   try {
     const [rows] = await pool.query(
-      'SELECT owner_phone FROM agent WHERE id = ? LIMIT 1',
+      'SELECT number FROM agent WHERE id = ? LIMIT 1',
       [id],
     );
-    if (!rows.length || !rows[0].owner_phone) {
+    if (!rows.length || !rows[0].number) {
       return null;
     }
-    return rows[0].owner_phone;
+    return rows[0].number;
   } catch (err) {
-    console.error('Erro ao buscar owner_phone:', err.message);
+    console.error('Erro ao buscar number:', err.message);
     return null;
   }
 };
