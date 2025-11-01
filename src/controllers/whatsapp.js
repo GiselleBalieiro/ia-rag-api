@@ -119,9 +119,26 @@ export async function startWhatsApp(id, attempt = 0, isRestoring = false) {
 
     sock.ev.on('messages.upsert', async (msg) => {
        const message = msg.messages[0];
-       if (!message.message || message.key.fromMe) return;
+       if (!message.message) return;
 
        const from = message.key.remoteJid;
+       const isFromMe = message.key.fromMe;
+
+       if (isFromMe) {
+         try {
+           const ownerPhone = await getOwnerPhone(id);
+           if (ownerPhone) {
+             const result = await blockNumber(id, from, 'owner_takeover', '24hr');
+             if (result && result.success) {
+               console.log(`[${id}] Dono assumiu atendimento com ${from} - IA bloqueada por 24h`);
+             }
+           }
+         } catch (err) {
+           console.error(`[${id}] Erro ao bloquear após dono assumir:`, err.message);
+         }
+         return; 
+       }
+
        const text = message.message.conversation || message.message.extendedTextMessage?.text;
        if (!text) return;
 
@@ -238,7 +255,14 @@ export async function startWhatsApp(id, attempt = 0, isRestoring = false) {
              const blockedUntil = new Date(blockInfo.blocked_until);
              const hoursRemaining = Math.ceil((blockedUntil - new Date()) / (1000 * 60 * 60));
              console.log(`[${id}] Mensagem ignorada de ${from} (bloqueado por mais ${hoursRemaining}h)`);
-             console.log(`Motivo: ${blockInfo.blocked_by === 'system' ? 'Solicitou atendente' : 'Comando manual do dono'}`);
+
+             const motivo = blockInfo.blocked_by === 'system'
+               ? 'Solicitou atendente humano'
+               : blockInfo.blocked_by === 'owner_takeover'
+               ? 'Dono assumiu atendimento'
+               : 'Comando manual do dono';
+
+             console.log(`Motivo: ${motivo}`);
            }
            return;
          }
