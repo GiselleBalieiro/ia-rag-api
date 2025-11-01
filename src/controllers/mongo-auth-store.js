@@ -15,7 +15,12 @@ export const useMongoDBAuthState = async (collection, sessionId) => {
     const writeData = async (id, data) => {
         try {
             const simplifiedData = JSON.parse(JSON.stringify(data, BufferJSON.replacer));
-            await collection.updateOne({ _id: id }, { $set: simplifiedData }, { upsert: true });
+
+            await collection.replaceOne(
+                { _id: id },
+                { _id: id, ...simplifiedData },
+                { upsert: true }
+            );
         } catch (error) {
             console.error('Falha ao escrever dados da sessão:', error);
         }
