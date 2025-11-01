@@ -24,3 +24,19 @@ export const buscarAgentesParaRestaurar = async () => {
     throw new Error('Erro ao buscar agentes no banco: ' + err.message);
   }
 };
+
+export const getOwnerPhone = async (id) => {
+  try {
+    const [rows] = await pool.query(
+      'SELECT owner_phone FROM agent WHERE id = ? LIMIT 1',
+      [id],
+    );
+    if (!rows.length || !rows[0].owner_phone) {
+      return null;
+    }
+    return rows[0].owner_phone;
+  } catch (err) {
+    console.error('Erro ao buscar owner_phone:', err.message);
+    return null;
+  }
+};

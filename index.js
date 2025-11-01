@@ -18,6 +18,7 @@ app.use(
       'https://agent-5mygpia1j-gisellebalieiros-projects.vercel.app',
       'https://agent-gules-alpha.vercel.app',
       'http://localhost:5173',
+      'http://localhost:5174'
     ],
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],

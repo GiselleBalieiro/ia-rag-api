@@ -13,8 +13,9 @@ import Pino from 'pino';
 import qrcode from 'qrcode';
 import axios from 'axios';
 import { MongoClient } from 'mongodb';
-import { Boom } from '@hapi/boom'; 
-import { buscarAgentesParaRestaurar } from './function.js';
+import { Boom } from '@hapi/boom';
+import { buscarAgentesParaRestaurar, getOwnerPhone } from './function.js';
+import { blockNumber, unblockNumber, isNumberBlocked, getBlockInfo, detectHumanRequest } from './blockedNumbers.js';
 
 const MONGO_URL = process.env.MONGO_URL;
 
@@ -30,7 +31,7 @@ export function getWhatsappStatus(id) {
   return whatsappStatusMap;
 }
 
-export async function startWhatsApp(id, attempt = 0) {
+export async function startWhatsApp(id, attempt = 0, isRestoring = false) {
   if (!MONGO_URL) {
       throw new Error("A variável de ambiente MONGO_URL não foi configurada na Vercel.");
   }
@@ -40,18 +41,28 @@ export async function startWhatsApp(id, attempt = 0) {
       await mongoClient.connect();
       console.log("Conectado ao MongoDB Atlas.");
   }
-  
+
   const collection = mongoClient.db("baileys_sessions_db").collection("sessions");
 
   try {
     const { state, saveCreds, clearCreds } = await useMongoDBAuthState(collection, id);
+
+    if (isRestoring) {
+      const hasCredentials = state.creds && state.creds.me;
+      if (!hasCredentials) {
+        console.log(`⏭Pulando agente ${id} - sem credenciais salvas (precisa escanear QR)`);
+        whatsappStatusMap[id] = { status: 'desconectado', qr: null };
+        return null;
+      }
+      console.log(`Restaurando sessão existente para agente ${id}`);
+    }
 
     const { version } = await fetchLatestBaileysVersion();
     const logger = Pino({ level: 'silent' });
 
     const sock = makeWASocket({
       version,
-      auth: state, 
+      auth: state,
       logger,
       printQRInTerminal: false,
       browser: Browsers.windows('Chrome'),
@@ -98,7 +109,7 @@ export async function startWhatsApp(id, attempt = 0) {
             console.log(
               `Tentando reconectar agente ${id} em ${delay}ms (tentativa ${nextAttempt})`,
             );
-            setTimeout(() => startWhatsApp(id, nextAttempt), delay);
+            setTimeout(() => startWhatsApp(id, nextAttempt, false), delay);
           } else {
             console.error(`Máximo de tentativas de reconexão atingido para agente ${id}`);
           }
@@ -114,7 +125,126 @@ export async function startWhatsApp(id, attempt = 0) {
        const text = message.message.conversation || message.message.extendedTextMessage?.text;
        if (!text) return;
 
-       console.log(`${from}: ${text}`);
+       console.log(`[${id}] ${from}: ${text}`);
+
+       // comando de bloqueio "###" ou "### <duração>"
+       const blockCommandMatch = text.trim().match(/^###\s*(\d+(?:hr|h|d|a|ano|anos)?)?$/i);
+       if (blockCommandMatch) {
+         try {
+           const ownerPhone = await getOwnerPhone(id);
+
+           if (!ownerPhone) {
+             console.warn(`Agente ${id} não tem owner_phone configurado`);
+             await sock.sendMessage(from, {
+               text: 'Não foi possível processar o comando. Configure o número do dono da conta.'
+             });
+             return;
+           }
+
+           const normalizedFrom = from.replace(/[^\d]/g, '');
+           const normalizedOwner = ownerPhone.replace(/[^\d]/g, '');
+
+           if (normalizedFrom.includes(normalizedOwner) || normalizedOwner.includes(normalizedFrom)) {
+             const duration = blockCommandMatch[1] || '24hr';
+
+             const result = await blockNumber(id, from, from, duration);
+
+             if (result && result.success) {
+               const blockedUntil = result.blockedUntil.toLocaleString('pt-BR');
+              //  await sock.sendMessage(from, {
+              //    text: `IA desabilitada para este número por ${duration}.\n\nVocê não receberá mais respostas automáticas até ${blockedUntil}.\n\nPara reativar antes, envie: ##ativar`
+              //  });
+               console.log(`Número ${from} bloqueado por ${duration} para agente ${id}`);
+             } else {
+                console.log('Não foi possível desabilitar a IA. Verifique o formato do comando.\n\nExemplos: ###, ### 1hr, ### 24hr, ### 7d, ### 1a')
+             }
+           } else {
+             console.log(`Tentativa de usar comando ### por não-dono: ${from}`);
+             await sock.sendMessage(from, {
+               text: 'Comando não reconhecido.'
+             });
+           }
+         } catch (err) {
+           console.error('Erro ao processar comando ###:', err.message);
+           await sock.sendMessage(from, {
+             text: 'Erro ao processar comando.'
+           });
+         }
+         return; 
+       }
+
+       if (text.trim() === '##ativar') {
+         try {
+           const ownerPhone = await getOwnerPhone(id);
+
+           if (!ownerPhone) {
+             console.warn(`Agente ${id} não tem owner_phone configurado`);
+             return;
+           }
+
+           const normalizedFrom = from.replace(/[^\d]/g, '');
+           const normalizedOwner = ownerPhone.replace(/[^\d]/g, '');
+
+           if (normalizedFrom.includes(normalizedOwner) || normalizedOwner.includes(normalizedFrom)) {
+             const unblocked = await unblockNumber(id, from);
+
+             if (unblocked) {
+              console.log(`Número ${from} desbloqueado para agente ${id}`);
+             } else {
+              console.log('A IA já estava ativa.');
+             }
+           } else {
+             await sock.sendMessage(from, {
+               text: 'Comando não reconhecido.'
+             });
+           }
+         } catch (err) {
+           console.error('Erro ao processar comando ##ativar:', err.message);
+         }
+         return;
+       }
+
+       if (detectHumanRequest(text)) {
+         try {
+           console.log(`Solicitação de atendente humano detectada de ${from}`);
+
+           const result = await blockNumber(id, from, 'system', '24hr');
+
+           if (result && result.success) {
+             await sock.sendMessage(from, {
+               text: 'Entendido! Estou encerrando o atendimento automático.\n\nVocê será transferido(a) para o atendente em breve.'
+             });
+             console.log(`Número ${from} bloqueado por 24hr (solicitação de atendente) para agente ${id}`);
+           } else {
+             await sock.sendMessage(from, {
+               text: 'Vou transferir você para um atendente. Aguarde um momento, por favor.'
+             });
+           }
+         } catch (err) {
+           console.error('Erro ao processar solicitação de atendente:', err.message);
+           await sock.sendMessage(from, {
+             text: 'Vou transferir você para um atendente. Aguarde, por favor.'
+           });
+         }
+         return; 
+       }
+
+       try {
+         const blocked = await isNumberBlocked(id, from);
+
+         if (blocked) {
+           const blockInfo = await getBlockInfo(id, from);
+           if (blockInfo) {
+             const blockedUntil = new Date(blockInfo.blocked_until);
+             const hoursRemaining = Math.ceil((blockedUntil - new Date()) / (1000 * 60 * 60));
+             console.log(`[${id}] Mensagem ignorada de ${from} (bloqueado por mais ${hoursRemaining}h)`);
+             console.log(`Motivo: ${blockInfo.blocked_by === 'system' ? 'Solicitou atendente' : 'Comando manual do dono'}`);
+           }
+           return;
+         }
+       } catch (err) {
+         console.error(`[${id}] Erro ao verificar bloqueio:`, err.message);
+       }
 
        try {
          const response = await axios.post(
@@ -125,7 +255,7 @@ export async function startWhatsApp(id, attempt = 0) {
 
          const reply = response.data.resposta || 'Não consegui gerar uma resposta no momento.';
          await sock.sendMessage(from, { text: reply });
-         console.log(`IA respondeu: ${reply}`);
+         console.log(`[${id}] IA respondeu para ${from}: ${reply.substring(0, 100)}${reply.length > 100 ? '...' : ''}`);
        } catch (err) {
          console.error('Erro ao consultar IA:', err.message);
          await sock.sendMessage(from, { text: 'Não consegui falar com o servidor da IA agora.' });
@@ -139,11 +269,13 @@ export async function startWhatsApp(id, attempt = 0) {
     console.error(`Erro ao iniciar WhatsApp para agente ${id}:`, err?.message || err);
     whatsappStatusMap[id] = { status: 'erro', qr: null, error: err?.message };
 
-    const nextAttempt = attempt + 1;
-    if (nextAttempt <= 5) {
-      const delay = Math.min(30000, 2000 * Math.pow(2, attempt));
-      console.log(`Retry startWhatsApp para agente ${id} em ${delay}ms (tentativa ${nextAttempt})`);
-      setTimeout(() => startWhatsApp(id, nextAttempt), delay);
+    if (!isRestoring) {
+      const nextAttempt = attempt + 1;
+      if (nextAttempt <= 5) {
+        const delay = Math.min(30000, 2000 * Math.pow(2, attempt));
+        console.log(`Retry startWhatsApp para agente ${id} em ${delay}ms (tentativa ${nextAttempt})`);
+        setTimeout(() => startWhatsApp(id, nextAttempt, false), delay);
+      }
     }
   }
 }
@@ -169,11 +301,25 @@ export async function conectarWhatsApp(req, res) {
 }
 
 export async function restaurarSessoesWhatsApp() {
+  console.log('Iniciando restauração de sessões WhatsApp...');
   const agentes = await buscarAgentesParaRestaurar();
+
+  if (!agentes || agentes.length === 0) {
+    console.log('Nenhum agente com status ativo para restaurar.');
+    return;
+  }
+
+  console.log(`Encontrados ${agentes.length} agente(s) ativo(s). Verificando sessões salvas...`);
+
   for (const agente of agentes) {
     if (agente.id) {
-      startWhatsApp(agente.id);
-      console.log(`Restaurando sessão WhatsApp para agente ${agente.id}`);
+      try {
+        await startWhatsApp(agente.id, 0, true);
+      } catch (err) {
+        console.error(`Erro ao restaurar agente ${agente.id}:`, err.message);
+      }
     }
   }
+
+  console.log('Processo de restauração concluído.');
 }
