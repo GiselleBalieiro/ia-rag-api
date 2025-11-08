@@ -1,13 +1,11 @@
-// src/utils/mongoAuthState.js
 import Baileys from '@whiskeysockets/baileys';
 import { MongoClient } from 'mongodb';
 import fs from 'fs';
 
 const { proto, initAuthCreds, BufferJSON } = Baileys;
 
-// 🔹 Usa MONGO_URL do seu .env
 const mongoUri = process.env.MONGO_URL;
-const dbName = 'baileys'; // nome do banco (pode mudar se quiser)
+const dbName = 'api-baileys'; 
 
 let mongoClient;
 
@@ -15,7 +13,7 @@ async function connectMongo() {
     if (!mongoClient) {
         mongoClient = new MongoClient(mongoUri, { connectTimeoutMS: 20000 });
         await mongoClient.connect();
-        console.log('✅ MongoDB conectado com sucesso!');
+        console.log('MongoDB conectado com sucesso!');
     }
     return mongoClient.db(dbName).collection('sessions');
 }
@@ -28,7 +26,7 @@ export const useMongoDBAuthState = async (sessionId = 'default') => {
             const data = await collection.findOne({ _id: id });
             return data ? JSON.parse(JSON.stringify(data), BufferJSON.reviver) : null;
         } catch (error) {
-            console.error('❌ Falha ao ler dados da sessão:', error);
+            console.error('Falha ao ler dados da sessão:', error);
             return null;
         }
     };
@@ -42,7 +40,7 @@ export const useMongoDBAuthState = async (sessionId = 'default') => {
                 { upsert: true }
             );
         } catch (error) {
-            console.error('❌ Falha ao escrever dados da sessão:', error);
+            console.error('Falha ao escrever dados da sessão:', error);
         }
     };
 
@@ -50,13 +48,12 @@ export const useMongoDBAuthState = async (sessionId = 'default') => {
         try {
             await collection.deleteOne({ _id: id });
         } catch (error) {
-            console.error('❌ Falha ao remover dados da sessão:', error);
+            console.error('Falha ao remover dados da sessão:', error);
         }
     };
 
     const creds = (await readData(sessionId)) || initAuthCreds();
 
-    // 🔹 Mantém o backup local em caso de falha no Mongo
     const backupFile = `./session-backup-${sessionId}.json`;
     const saveBackup = (data) => fs.writeFileSync(backupFile, JSON.stringify(data, null, 2));
 
