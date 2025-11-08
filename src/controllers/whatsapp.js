@@ -397,20 +397,24 @@ export async function startWhatsApp(id, attempt = 0) {
   }
 }
 
-export const conectarWhatsApp = async (req, res) => {
+export async function conectarWhatsApp(req, res) {
   try {
-    const id = req.body?.id || 'default'; 
-    console.log(`Iniciando conexão WhatsApp para ID: ${id}`);
-
-    await startWhatsApp(id);
-
-    if (res) {
-      res.json({ success: true, message: 'Conexão WhatsApp iniciada', id });
+    const id = req.body.id;
+    if (!id) {
+      return res
+        .status(400)
+        .json({ success: false, message: 'ID é obrigatório.' });
     }
+
+    whatsappStatusMap[id] = { status: 'iniciando', qr: null };
+
+    startWhatsApp(id);
+    res.json({
+      success: true,
+      message:
+        'Conexão com o WhatsApp iniciada! Aguarde o status mudar para "qr" ou "conectado".',
+    });
   } catch (err) {
-    console.error('Erro ao conectar WhatsApp:', err);
-    if (res) {
-      res.status(500).json({ error: 'Erro ao conectar WhatsApp' });
-    }
+    res.status(500).json({ success: false, message: err.message });
   }
-};
+}
