@@ -60,7 +60,7 @@ async function safeSendMessage(sock, id, jid, content) {
   }
 }
 
-export function getWhatsappStatus(id) {
+export function getWhatsappStatus(id, allowNewSession = true, attempt = 0) {
   return id ? whatsappStatusMap[id] || { status: 'desconectado', qr: null } : whatsappStatusMap;
 }
 
@@ -71,6 +71,24 @@ export async function startWhatsApp(id, attempt = 0) {
 
   const collection = client.db(dbName).collection('sessions');
   console.log(`[${id}] Usando DB: ${dbName}, Collection: sessions`);
+
+  try {
+    const sessionExists = await collection.findOne({ _id: id });
+
+    if (!sessionExists && !allowNewSession) {
+      console.log(`[${id}] Sessão não encontrada no DB. Pulando restauração (QR code não será gerado).`);
+      if(whatsappStatusMap) { 
+          whatsappStatusMap[id] = { status: 'desconectado', qr: null, error: 'Sessão não registrada.' };
+      }
+      return; 
+    }
+    
+    console.log(`[${id}] Iniciando... (Sessão ${sessionExists ? 'encontrada no DB' : 'será criada'}).`);
+
+  } catch (err) {
+    console.error(`[${id}] Erro ao verificar sessão no DB:`, err.message);
+    return;
+  }
 
   try {
     const { state, saveCreds, clearCreds } = await useMongoDBAuthState(collection, id);
@@ -434,9 +452,12 @@ export async function conectarWhatsApp(req, res) {
         .json({ success: false, message: 'ID é obrigatório.' });
     }
 
-    whatsappStatusMap[id] = { status: 'iniciando', qr: null };
+    if(whatsappStatusMap) {
+        whatsappStatusMap[id] = { status: 'iniciando', qr: null };
+    }
 
-    startWhatsApp(id);
+    startWhatsApp(id, true); 
+    
     res.json({
       success: true,
       message:

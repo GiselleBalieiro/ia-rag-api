@@ -1,24 +1,32 @@
 import { startWhatsApp } from './whatsapp.js';
 import { buscarAgentesParaRestaurar } from './function.js';
 
-export async function restaurarConexoes () {
+const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+async function restaurarConexoes() {
   console.log('[Servidor] Servidor iniciado. Restaurando conexões ativas...');
   try {
-    const agentes = await buscarAgentesParaRestaurar();
-
-    console.log('[Servidor] agentes raw:', JSON.stringify(agentes, null, 2));
-
-    const idsParaRestaurar = agentes.map(a => a.id ?? a._id ?? a.agentId ?? a.sessionId ?? a.name ?? a);
+    const idsParaRestaurar = await buscarAgentesParaRestaurar(); 
 
     if (idsParaRestaurar.length > 0) {
       console.log(`[Servidor] Restaurando ${idsParaRestaurar.length} sessões: [${idsParaRestaurar.join(', ')}]`);
-      await Promise.all(
-        idsParaRestaurar.map(id => startWhatsApp(id))
-      );
+
+      for (const id of idsParaRestaurar) {
+        try {
+          console.log(`[Servidor] Iniciando conexão para o agente: ${id}`);
+          await startWhatsApp(id);
+          console.log(`[Servidor] Agente ${id} processado. Aguardando 10 segundos...`);
+          await delay(10000); 
+        } catch (err) {
+          console.error(`[Servidor] Erro ao iniciar agente ${id}:`, err.message);
+        }
+      }
+      
+      console.log('[Servidor] Restauração de sessões concluída.');
     } else {
-      console.log('Nenhuma sessão encontrada para restaurar.');
+      console.log('[Servidor] Nenhuma sessão encontrada para restaurar.');
     }
   } catch (error) {
-    console.error(' Erro crítico ao restaurar conexões:', error);
+    console.error('[Servidor] Erro crítico ao restaurar conexões:', error);
   }
 }
