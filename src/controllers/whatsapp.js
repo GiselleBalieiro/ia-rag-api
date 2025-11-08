@@ -32,7 +32,8 @@ async function getMongoClient() {
     mongoClient = new MongoClient(MONGO_URL, {
       connectTimeoutMS: 15000,
       socketTimeoutMS: 45000,
-      keepAlive: true,
+      maxPoolSize: 10, 
+      serverSelectionTimeoutMS: 5000, 
     });
     await mongoClient.connect();
     console.log('Conectado ao MongoDB Atlas');
