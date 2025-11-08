@@ -30,18 +30,32 @@ export const useMongoDBAuthState = async (sessionId = 'default') => {
             return null;
         }
     };
-
+    
     const writeData = async (id, data) => {
-        try {
-            const simplifiedData = JSON.parse(JSON.stringify(data, BufferJSON.replacer));
-            await collection.replaceOne(
-                { _id: id },
-                { _id: id, ...simplifiedData },
-                { upsert: true }
-            );
-        } catch (error) {
-            console.error('Falha ao escrever dados da sessão:', error);
-        }
+      try {
+        const safeStringify = (obj) => {
+          const seen = new WeakSet();
+          return JSON.parse(
+            JSON.stringify(obj, (key, value) => {
+              if (typeof value === 'object' && value !== null) {
+                if (seen.has(value)) return; 
+                seen.add(value);
+              }
+              return value;
+            }, BufferJSON.replacer)
+          );
+        };
+
+        const simplifiedData = safeStringify(data);
+
+        await collection.replaceOne(
+          { _id: id },
+          { _id: id, ...simplifiedData },
+          { upsert: true }
+        );
+      } catch (error) {
+        console.error('Falha ao escrever dados da sessão:', error);
+      }
     };
 
     const removeData = async (id) => {
