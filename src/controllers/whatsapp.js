@@ -64,7 +64,10 @@ export function getWhatsappStatus(id) {
 export async function startWhatsApp(id, attempt = 0) {
   if (!MONGO_URL) throw new Error('Variável MONGO_URL não configurada.');
   const client = await getMongoClient();
-  const collection = client.db('baileys_sessions_db').collection('sessions');
+  const dbName = 'baileys_sessions_db';
+  
+  const collection = client.db(dbName).collection('sessions');
+  console.log(`[${id}] Usando DB: ${dbName}, Collection: sessions`);
 
   try {
     const { state, saveCreds, clearCreds } = await useMongoDBAuthState(collection, id);

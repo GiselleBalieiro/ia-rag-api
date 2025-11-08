@@ -1,62 +1,38 @@
 import Baileys from '@whiskeysockets/baileys';
-import { MongoClient } from 'mongodb';
 import fs from 'fs';
 
 const { proto, initAuthCreds, BufferJSON } = Baileys;
 
-const mongoUri = process.env.MONGO_URL;
-const dbName = 'api-baileys'; 
-
-let mongoClient;
-
-async function connectMongo() {
-  if (!mongoClient) {
-    mongoClient = new MongoClient(mongoUri, { connectTimeoutMS: 20000 });
-    await mongoClient.connect();
-    console.log('✅ MongoDB conectado com sucesso!');
-  }
-  return mongoClient.db(dbName).collection('sessions');
-}
-
-export const useMongoDBAuthState = async (sessionId = 'default') => {
-  const collection = await connectMongo();
-
-  const safeStringify = (obj) => {
-    const seen = new WeakSet();
-    return JSON.parse(
-      JSON.stringify(
-        obj,
-        (key, value) => {
-          if (typeof value === 'object' && value !== null) {
-            if (seen.has(value)) return;
-            seen.add(value);
-          }
-          return BufferJSON.replacer(key, value);
-        }
-      )
-    );
-  };
+export const useMongoDBAuthState = async (collection, sessionId = 'default') => {
 
   const readData = async (id) => {
     try {
-      const data = await collection.findOne({ _id: id });
-      return data ? JSON.parse(JSON.stringify(data), BufferJSON.reviver) : null;
+      const doc = await collection.findOne({ _id: id });
+
+      if (!doc || !doc.data) {
+        return null;
+      }
+
+      return JSON.parse(doc.data, BufferJSON.reviver);
+
     } catch (error) {
-      console.error('Falha ao ler dados da sessão:', error);
+      console.error(`[${sessionId}] Falha ao LER dados da sessão (${id}):`, error);
       return null;
     }
   };
 
   const writeData = async (id, data) => {
     try {
-      const simplifiedData = safeStringify(data);
+
+      const dataString = JSON.stringify(data, BufferJSON.replacer);
+
       await collection.updateOne(
         { _id: id },
-        { $set: simplifiedData },
+        { $set: { data: dataString } }, 
         { upsert: true }
       );
     } catch (error) {
-      console.error('Falha ao escrever dados da sessão:', error);
+      console.error(`[${sessionId}] Falha ao ESCREVER dados da sessão (${id}):`, error);
     }
   };
 
@@ -64,7 +40,7 @@ export const useMongoDBAuthState = async (sessionId = 'default') => {
     try {
       await collection.deleteOne({ _id: id });
     } catch (error) {
-      console.error('Falha ao remover dados da sessão:', error);
+      console.error(`[${sessionId}] Falha ao REMOVER dados da sessão (${id}):`, error);
     }
   };
 
@@ -105,7 +81,7 @@ export const useMongoDBAuthState = async (sessionId = 'default') => {
     },
     saveCreds: async () => {
       await writeData(sessionId, creds);
-      saveBackup(creds);
+      saveBackup(creds); 
     },
     clearCreds: () => removeData(sessionId),
   };
