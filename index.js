@@ -6,6 +6,7 @@ import authRouter from "./src/routes/authRouter.js";
 import perguntasRouter from './src/routes/perguntarRouter.js';
 import whatsappRouter from './src/routes/whatsappRouter.js';
 import agentRouter from './src/routes/agentRouter.js';
+import {restaurarConexoes} from './src/controllers/restoreSessions.js';
 
 dotenv.config();
 
@@ -35,4 +36,6 @@ app.use("/user", authRouter);
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Servidor rodando na porta ${PORT}`);
+
+  restaurarConexoes();
 });
