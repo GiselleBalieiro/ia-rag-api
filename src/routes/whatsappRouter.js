@@ -1,5 +1,5 @@
 import express from 'express';
-import { getWhatsappStatus } from '../controllers/whatsapp.js';
+import { getWhatsappStatus, conectarWhatsApp  } from '../controllers/whatsapp.js';
 
 const router = express.Router();
 
@@ -12,6 +12,8 @@ router.get('/status', (req, res) => {
     res.status(500).json({ success: false, message: err.message });
   }
 });
+
+router.post('/conectar', conectarWhatsApp);
 
 
 export default router;

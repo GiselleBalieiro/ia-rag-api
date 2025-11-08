@@ -396,3 +396,21 @@ export async function startWhatsApp(id, attempt = 0) {
     }
   }
 }
+
+export const conectarWhatsApp = async (req, res) => {
+  try {
+    const id = req.body?.id || 'default'; 
+    console.log(`Iniciando conexão WhatsApp para ID: ${id}`);
+
+    await startWhatsApp(id);
+
+    if (res) {
+      res.json({ success: true, message: 'Conexão WhatsApp iniciada', id });
+    }
+  } catch (err) {
+    console.error('Erro ao conectar WhatsApp:', err);
+    if (res) {
+      res.status(500).json({ error: 'Erro ao conectar WhatsApp' });
+    }
+  }
+};
