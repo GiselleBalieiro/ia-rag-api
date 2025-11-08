@@ -1,5 +1,4 @@
 import Baileys from '@whiskeysockets/baileys';
-
 const {
   default: makeWASocket,
   fetchLatestBaileysVersion,
@@ -7,8 +6,7 @@ const {
   Browsers,
 } = Baileys;
 
-import { useMongoDBAuthState } from './mongo-auth-store.js';
-
+import { useMongoDBAuthState } from './mongoAuthState.js';
 import Pino from 'pino';
 import qrcode from 'qrcode';
 import axios from 'axios';
@@ -24,26 +22,33 @@ import {
 } from './blockedNumbers.js';
 
 const MONGO_URL = process.env.MONGO_URL;
-
 let mongoClient;
-
 let whatsappStatusMap = {};
 const activeSockets = {};
+const aiSentMessages = new Map();
 
-const aiSentMessages = new Map(); 
+async function getMongoClient() {
+  if (!mongoClient) {
+    mongoClient = new MongoClient(MONGO_URL, {
+      connectTimeoutMS: 15000,
+      socketTimeoutMS: 45000,
+      keepAlive: true,
+    });
+    await mongoClient.connect();
+    console.log('Conectado ao MongoDB Atlas');
+  }
+  return mongoClient;
+}
 
 async function safeSendMessage(sock, id, jid, content) {
   try {
     const sentMsg = await sock.sendMessage(jid, content);
-
-    if (sentMsg && sentMsg.key && sentMsg.key.id) {
-      aiSentMessages.set(sentMsg.key.id, Date.now());
-    }
+    if (sentMsg?.key?.id) aiSentMessages.set(sentMsg.key.id, Date.now());
     return sentMsg;
   } catch (err) {
     if (err.output?.statusCode === 408 || err.message?.includes('Timed Out')) {
-      console.warn(`[${id}] Timeout ao enviar mensagem para ${jid}. Tentando novamente...`);
-      setTimeout(() => safeSendMessage(sock, id, jid, content), 2000);
+      console.warn(`[${id}] Timeout ao enviar mensagem para ${jid}. Retentando...`);
+      setTimeout(() => safeSendMessage(sock, id, jid, content), 3000);
     } else {
       console.error(`[${id}] Erro ao enviar mensagem:`, err.message || err);
     }
@@ -52,35 +57,16 @@ async function safeSendMessage(sock, id, jid, content) {
 }
 
 export function getWhatsappStatus(id) {
-  if (id) {
-    return whatsappStatusMap[id] || { status: 'desconectado', qr: null };
-  }
-  return whatsappStatusMap;
+  return id ? whatsappStatusMap[id] || { status: 'desconectado', qr: null } : whatsappStatusMap;
 }
 
 export async function startWhatsApp(id, attempt = 0) {
-  if (!MONGO_URL) {
-    throw new Error(
-      'A variável de ambiente MONGO_URL não foi configurada na Vercel.',
-    );
-  }
-
-  if (!mongoClient) {
-    mongoClient = new MongoClient(MONGO_URL, {});
-    await mongoClient.connect();
-    console.log('Conectado ao MongoDB Atlas.');
-  }
-
-  const collection = mongoClient
-    .db('baileys_sessions_db')
-    .collection('sessions');
+  if (!MONGO_URL) throw new Error('Variável MONGO_URL não configurada.');
+  const client = await getMongoClient();
+  const collection = client.db('baileys_sessions_db').collection('sessions');
 
   try {
-    const { state, saveCreds, clearCreds } = await useMongoDBAuthState(
-      collection,
-      id,
-    );
-
+    const { state, saveCreds, clearCreds } = await useMongoDBAuthState(collection, id);
     const { version } = await fetchLatestBaileysVersion();
     const logger = Pino({ level: 'silent' });
 
@@ -90,16 +76,15 @@ export async function startWhatsApp(id, attempt = 0) {
       logger,
       printQRInTerminal: false,
       browser: Browsers.windows('Chrome'),
-      connectTimeoutMs: 60000, // 60 segundos de timeout para conexão
-      defaultQueryTimeoutMs: 60000, // 60 segundos para queries
-      keepAliveIntervalMs: 30000, // Keep-alive a cada 30 segundos
-      retryRequestDelayMs: 1000, // Delay entre tentativas
-      markOnlineOnConnect: true,
-      syncFullHistory: false, // Não sincronizar histórico completo 
-      getMessage: async (key) => {
 
-        return { conversation: '' };
-      },
+      connectTimeoutMs: 45000,
+      defaultQueryTimeoutMs: 45000,
+      keepAliveIntervalMs: 20000,
+      retryRequestDelayMs: 1500,
+      markOnlineOnConnect: true,
+      syncFullHistory: false,
+
+      getMessage: async () => ({ conversation: '' }),
     });
 
     activeSockets[id] = sock;
@@ -109,62 +94,44 @@ export async function startWhatsApp(id, attempt = 0) {
       const { connection, lastDisconnect, qr } = update;
 
       if (qr) {
-        const qrBase64 = await qrcode.toDataURL(qr);
-        whatsappStatusMap[id] = { status: 'qr', qr: qrBase64 };
+        whatsappStatusMap[id] = { status: 'qr', qr: await qrcode.toDataURL(qr) };
         console.log(`QR gerado para agente ${id}`);
       }
 
       if (connection === 'open') {
         whatsappStatusMap[id] = { status: 'conectado', qr: null };
-        console.log(`Conectado ao WhatsApp para agente ${id}`);
+        console.log(`Conectado ao WhatsApp (${id})`);
         attempt = 0;
       }
 
       if (connection === 'close') {
         delete activeSockets[id];
-
         const reason = lastDisconnect?.error?.output?.statusCode;
         const shouldReconnect = reason !== DisconnectReason.loggedOut;
 
-        console.warn(`Conexão fechada para agente ${id}, reason: ${reason}`);
+        console.warn(`Conexão fechada (${id}), motivo: ${reason}`);
         whatsappStatusMap[id] = { status: 'desconectado', qr: null };
 
         if (reason === DisconnectReason.connectionReplaced) {
-          console.error(
-            `CONEXÃO SUBSTITUÍDA para agente ${id}. Outra sessão foi aberta. Não vamos reconectar.`,
-          );
+          console.log(`Conexão substituída (${id}).`);
         } else if (reason === DisconnectReason.loggedOut) {
-          console.log(
-            `Sessão encerrada permanentemente para agente ${id}. Requer novo QR Code.`,
-          );
           await clearCreds();
-        } else if (reason === 408 || reason === 428 || shouldReconnect) {
-
+          console.log(`Sessão encerrada permanentemente (${id}).`);
+        } else if (reason === 408 || shouldReconnect) {
           const nextAttempt = attempt + 1;
-          const maxAttempts = 10; 
           const delay = Math.min(30000, 2000 * Math.pow(2, attempt));
-
-          if (nextAttempt <= maxAttempts) {
-            console.log(
-              `Tentando reconectar agente ${id} em ${delay}ms (tentativa ${nextAttempt})`,
-            );
+          if (nextAttempt <= 10) {
+            console.log(`Reconnect ${id} em ${delay}ms (tentativa ${nextAttempt})`);
             setTimeout(() => startWhatsApp(id, nextAttempt), delay);
           } else {
-            console.error(
-              `Máximo de tentativas de reconexão atingido para agente ${id}`,
-            );
-            whatsappStatusMap[id] = {
-              status: 'erro',
-              qr: null,
-              error: 'Falha na reconexão após múltiplas tentativas',
-            };
+            whatsappStatusMap[id] = { status: 'erro', error: 'Reconexão falhou' };
           }
         }
       }
     });
 
     sock.ev.on('messages.upsert', async (msg) => {
-      try {
+    try {
         const message = msg.messages[0];
         if (!message.message) return;
 
@@ -422,57 +389,10 @@ export async function startWhatsApp(id, attempt = 0) {
     sock.ev.on('creds.update', saveCreds);
     return sock;
   } catch (err) {
-    console.error(`Erro ao iniciar WhatsApp para agente ${id}:`, err?.message || err);
-
+    console.error(`Erro ao iniciar WhatsApp (${id}):`, err?.message || err);
     whatsappStatusMap[id] = { status: 'erro', qr: null, error: err?.message };
-
     if (err.message?.includes('Timed Out')) {
-      console.log(`[${id}] Reconectando após Timeout em 5s...`);
-      return setTimeout(() => startWhatsApp(id, attempt + 1), 5000);
-    }
-
-    whatsappStatusMap[id] = { status: 'erro', qr: null, error: err?.message };
-
-    const nextAttempt = attempt + 1;
-    if (nextAttempt <= 5) {
-      const delay = Math.min(30000, 2000 * Math.pow(2, attempt));
-      console.log(
-        `Retry startWhatsApp para agente ${id} em ${delay}ms (tentativa ${nextAttempt})`,
-      );
-      setTimeout(() => startWhatsApp(id, nextAttempt), delay);
+      setTimeout(() => startWhatsApp(id, attempt + 1), 5000);
     }
   }
-}
-
-export async function conectarWhatsApp(req, res) {
-  try {
-    const id = req.body.id;
-    if (!id) {
-      return res
-        .status(400)
-        .json({ success: false, message: 'ID é obrigatório.' });
-    }
-    whatsappStatusMap[id] = { status: 'iniciando', qr: null };
-    startWhatsApp(id);
-    res.json({
-      success: true,
-      message:
-        'Conexão com o WhatsApp iniciada! Aguarde o status mudar para "qr" ou "conectado".',
-    });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
-}
-
-export async function restaurarSessoesWhatsApp() {
-  const agentes = await buscarAgentesParaRestaurar();
-
-  for (const agente of agentes) {
-    if (agente.id) {
-      startWhatsApp(agente.id);
-      console.log(`Restaurando sessão WhatsApp para agente ${agente.id}`);
-    }
-  }
-
-  console.log('Processo de restauração concluído.');
 }

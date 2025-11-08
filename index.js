@@ -1,7 +1,6 @@
 import express from 'express';
 import dotenv from 'dotenv';
 import cors from 'cors';
-import { restaurarSessoesWhatsApp } from './src/controllers/whatsapp.js';
 
 import authRouter from "./src/routes/authRouter.js";
 import perguntasRouter from './src/routes/perguntarRouter.js';
@@ -32,15 +31,6 @@ app.use('/', perguntasRouter);
 app.use('/', whatsappRouter);
 app.use('/agent', agentRouter);
 app.use("/user", authRouter);
-
-(async () => {
-  try {
-    await restaurarSessoesWhatsApp();
-    console.log('Tentativa de restaurar sessões executada.');
-  } catch (err) {
-    console.error('Erro ao restaurar sessões (capturado):', err);
-  }
-})();
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
