@@ -27,6 +27,9 @@ let whatsappStatusMap = {};
 const activeSockets = {};
 const aiSentMessages = new Map();
 
+const conversationHistory = new Map(); 
+const MAX_HISTORY_PER_USER = 10;
+
 async function getMongoClient() {
   if (!mongoClient) {
     mongoClient = new MongoClient(MONGO_URL, {
@@ -65,7 +68,7 @@ export async function startWhatsApp(id, attempt = 0) {
   if (!MONGO_URL) throw new Error('Variável MONGO_URL não configurada.');
   const client = await getMongoClient();
   const dbName = 'baileys_sessions_db';
-  
+
   const collection = client.db(dbName).collection('sessions');
   console.log(`[${id}] Usando DB: ${dbName}, Collection: sessions`);
 
@@ -352,25 +355,46 @@ export async function startWhatsApp(id, attempt = 0) {
         }
 
         try {
-          const response = await axios.post(
-            'https://ia-rag-api.vercel.app/perguntar',
-            { pergunta: text, id: id, userId: from },
-            { headers: { 'Content-Type': 'application/json' } },
-          );
 
-          const reply =
-            response.data.resposta ||
-            'Não consegui gerar uma resposta no momento.';
+            const historyKey = from; 
+            let userHistory = conversationHistory.get(historyKey) || [];
 
-          await safeSendMessage(sock, id, from, { text: reply });
+            userHistory.push({ role: 'user', content: text });
 
-          console.log(`IA respondeu: ${reply}`);
-        } catch (err) {
-          console.error('Erro ao consultar IA:', err.message);
-          await safeSendMessage(sock, id, from, {
-            text: 'Não consegui falar com o servidor da IA agora.',
-          });
-        }
+            if (userHistory.length > MAX_HISTORY_PER_USER) {
+              userHistory = userHistory.slice(userHistory.length - MAX_HISTORY_PER_USER);
+            }
+
+            const response = await axios.post(
+              'https://ia-rag-api.vercel.app/perguntar',
+              { 
+                pergunta: text,
+                id: id,  
+                userId: from, 
+                historico: userHistory 
+              },
+              { headers: { 'Content-Type': 'application/json' } },
+            );
+    
+            const reply =
+              response.data.resposta ||
+              'Não consegui gerar uma resposta no momento.';
+
+            userHistory.push({ role: 'assistant', content: reply });
+
+            conversationHistory.set(historyKey, userHistory);
+
+            await safeSendMessage(sock, id, from, { text: reply });
+    
+            console.log(`IA respondeu: ${reply}`);
+    
+          } catch (err) {
+            console.error('Erro ao consultar IA:', err.message);
+
+            await safeSendMessage(sock, id, from, {
+              text: 'Não consegui falar com o servidor da IA agora.',
+            });
+          }
       } catch (error) {
 
         if (error.message && error.message.includes('No sessions')) {
