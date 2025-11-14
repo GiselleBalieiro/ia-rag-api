@@ -172,7 +172,7 @@ export async function startWhatsApp(id, allowNewSession = true, attempt = 0) {
       console.log(`[${id}] Sessão não encontrada ou corrompida. Pulando restauração (QR code não será gerado).`);
       if(whatsappStatusMap) {
           whatsappStatusMap[id] = { status: 'desconectado', qr: null, error: 'Sessão não registrada ou corrompida.' };
-      }
+        }
       connectingAgents.delete(id); 
       return;
     }
@@ -265,8 +265,9 @@ export async function startWhatsApp(id, allowNewSession = true, attempt = 0) {
             if(whatsappStatusMap) {
               whatsappStatusMap[id] = { status: 'erro', qr: null, error: 'Reconexão falhou' };
             }
+            connectingAgents.delete(id);
           }
-            connectingAgents.delete(id); 
+        }
       }
     });
 
@@ -581,7 +582,7 @@ export async function conectarWhatsApp(req, res) {
         success: true,
         message: `Agente ${id} já está ${currentStatus}. Consulte /status?id=${id} para detalhes.`,
         status: currentStatus
-      });
+        });
     }
 
     if (connectingAgents.has(id)) {
@@ -590,7 +591,7 @@ export async function conectarWhatsApp(req, res) {
         success: true,
         message: `Agente ${id} já está sendo conectado. Aguarde ou consulte /status?id=${id}.`,
         status: 'conectando'
-      });
+        });
     }
 
     console.log(`[API] Iniciando conexão para agente ${id} via API`);
