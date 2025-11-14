@@ -6,6 +6,7 @@ import authRouter from "./src/routes/authRouter.js";
 import perguntasRouter from './src/routes/perguntarRouter.js';
 import whatsappRouter from './src/routes/whatsappRouter.js';
 import agentRouter from './src/routes/agentRouter.js';
+import healthRouter from './src/routes/healthRouter.js';
 import {restaurarConexoes} from './src/controllers/restoreSessions.js';
 
 dotenv.config();
@@ -32,10 +33,11 @@ app.use('/', perguntasRouter);
 app.use('/', whatsappRouter);
 app.use('/agent', agentRouter);
 app.use("/user", authRouter);
+app.use('/', healthRouter);
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Servidor rodando na porta ${PORT}`);
+  console.log('[Servidor] Restauração automática desabilitada. Use a API para conectar agentes.');
 
-  restaurarConexoes();
 });
