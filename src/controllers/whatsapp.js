@@ -109,15 +109,22 @@ async function getMongoClient() {
   return mongoClient;
 }
 
-async function safeSendMessage(sock, id, jid, content) {
+async function safeSendMessage(sock, id, jid, content, retryCount = 0) {
+  const MAX_RETRIES = 3;
+
   try {
     const sentMsg = await sock.sendMessage(jid, content);
     if (sentMsg?.key?.id) aiSentMessages.set(sentMsg.key.id, Date.now());
     return sentMsg;
   } catch (err) {
-    if (err.output?.statusCode === 408 || err.message?.includes('Timed Out')) {
-      console.warn(`[${id}] Timeout ao enviar mensagem para ${jid}. Retentando...`);
-      setTimeout(() => safeSendMessage(sock, id, jid, content), 3000);
+    if ((err.output?.statusCode === 408 || err.message?.includes('Timed Out')) && retryCount < MAX_RETRIES) {
+      console.warn(`[${id}] Timeout ao enviar mensagem para ${jid}. Tentativa ${retryCount + 1}/${MAX_RETRIES}...`);
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      return safeSendMessage(sock, id, jid, content, retryCount + 1);
+    } else if (err.message?.includes('Connection Closed') || err.message?.includes('Connection close')) {
+      console.error(`[${id}] Erro ao enviar mensagem: Connection Closed. A reconexão será iniciada automaticamente.`);
+      delete activeSockets[id];
+      return null;
     } else {
       console.error(`[${id}] Erro ao enviar mensagem:`, err.message || err);
     }
@@ -200,12 +207,14 @@ export async function startWhatsApp(id, allowNewSession = true, attempt = 0) {
       logger,
       printQRInTerminal: false,
       browser: Browsers.windows('Chrome'),
-      connectTimeoutMs: 30000,
-      defaultQueryTimeoutMs: 30000,
-      keepAliveIntervalMs: 20000,
-      retryRequestDelayMs: 1500,
+      connectTimeoutMs: 60000,
+      defaultQueryTimeoutMs: 60000,
+      keepAliveIntervalMs: 10000,
+      retryRequestDelayMs: 2000,
       markOnlineOnConnect: true,
       syncFullHistory: false,
+      qrTimeout: 60000,
+      emitOwnEvents: false,
       getMessage: async () => ({ conversation: '' }),
     });
 
@@ -236,9 +245,10 @@ export async function startWhatsApp(id, allowNewSession = true, attempt = 0) {
       if (connection === 'close') {
         delete activeSockets[id];
         const reason = lastDisconnect?.error?.output?.statusCode;
+        const errorMsg = lastDisconnect?.error?.message || '';
         const shouldReconnect = reason !== DisconnectReason.loggedOut;
 
-        console.warn(`Conexão fechada (${id}), motivo: ${reason}`);
+        console.warn(`Conexão fechada (${id}), motivo: ${reason || 'desconhecido'}, erro: ${errorMsg}`);
         if(whatsappStatusMap) {
           whatsappStatusMap[id] = { status: 'desconectado', qr: null };
         }
@@ -253,7 +263,7 @@ export async function startWhatsApp(id, allowNewSession = true, attempt = 0) {
             whatsappStatusMap[id] = { status: 'deslogado', qr: null, error: 'Usuário deslogado.' };
           }
           connectingAgents.delete(id); 
-        } else if (reason === 408 || shouldReconnect) {
+        } else if (reason === 408 || shouldReconnect || errorMsg.includes('Connection Closed') || errorMsg.includes('Timed Out')) {
           const nextAttempt = attempt + 1;
           const delay = Math.min(30000, 2000 * Math.pow(2, attempt));
           if (nextAttempt <= 10) {
@@ -267,12 +277,31 @@ export async function startWhatsApp(id, allowNewSession = true, attempt = 0) {
             }
             connectingAgents.delete(id);
           }
+        } else {
+          console.log(`[${id}] Motivo de desconexão desconhecido. Tentando reconectar...`);
+          const nextAttempt = attempt + 1;
+          const delay = Math.min(30000, 2000 * Math.pow(2, attempt));
+          if (nextAttempt <= 10) {
+            setTimeout(() => startWhatsApp(id, allowNewSession, nextAttempt), delay);
+          } else {
+            connectingAgents.delete(id);
+          }
         }
-      }
-    });
+      }
+    });
 
 
     sock.ev.on('creds.update', saveCreds);
+
+    // Listener de erros para capturar problemas não tratados
+    sock.ev.on('error', (error) => {
+      console.error(`[${id}] Erro no socket:`, error?.message || error);
+      if (error?.message?.includes('Connection Closed') || error?.message?.includes('Connection close')) {
+        console.log(`[${id}] Detectado erro de conexão. Limpando socket...`);
+        delete activeSockets[id];
+      }
+    });
+
     sock.ev.on('messages.upsert', async (msg) => {
         try {
             const message = msg.messages[0];
