@@ -29,8 +29,9 @@ const MONGO_URL = process.env.MONGO_URL;
 let mongoClient;
 let whatsappStatusMap = {};
 const activeSockets = {};
-const connectingAgents = new Map(); 
+const connectingAgents = new Map();
 const aiSentMessages = new Map();
+const processedMessages = new Map(); 
 
 const conversationHistory = new Map();
 const MAX_HISTORY_PER_USER = 10;
@@ -46,6 +47,13 @@ function cleanupOldHistories() {
     if (now - timestamp > HISTORY_MAX_AGE) {
       conversationHistory.delete(key);
       conversationHistoryTimestamps.delete(key);
+      cleaned++;
+    }
+  }
+
+  for (const [msgId, timestamp] of processedMessages.entries()) {
+    if (now - timestamp > 10 * 60 * 1000) {
+      processedMessages.delete(msgId);
       cleaned++;
     }
   }
@@ -306,16 +314,36 @@ export async function startWhatsApp(id, allowNewSession = true, attempt = 0) {
         try {
             const message = msg.messages[0];
             if (!message.message) return;
-            console.log(`[${id}] Mensagem recebida de ${message.key.remoteJid}`);
 
             const from = message.key.remoteJid;
             const isFromMe = message.key.fromMe;
             const messageId = message.key.id;
-    
-            const now = Date.now();
-            for (const [id, timestamp] of aiSentMessages.entries()) {
-              if (now - timestamp > 10000) {
-                aiSentMessages.delete(id);
+            const messageTimestamp = message.messageTimestamp?.low || message.messageTimestamp;
+
+            if (from === 'status@broadcast') {
+              return;
+            }
+
+            const now = Math.floor(Date.now() / 1000);
+            if (messageTimestamp && (now - messageTimestamp) > 300) {
+              console.log(`[${id}] Mensagem antiga ignorada (${Math.floor((now - messageTimestamp) / 60)} min) de ${from}`);
+              return;
+            }
+
+            const msgKey = `${id}-${messageId}`;
+            if (processedMessages.has(msgKey)) {
+              console.log(`[${id}] Mensagem duplicada ignorada: ${messageId}`);
+              return;
+            }
+
+            processedMessages.set(msgKey, Date.now());
+
+            console.log(`[${id}] Mensagem recebida de ${from}`);
+
+            const nowMs = Date.now();
+            for (const [msgId, timestamp] of aiSentMessages.entries()) {
+              if (nowMs - timestamp > 10000) {
+                aiSentMessages.delete(msgId);
               }
             }
     
@@ -564,15 +592,27 @@ export async function startWhatsApp(id, allowNewSession = true, attempt = 0) {
                 });
               }
           } catch (error) {
-    
-            if (error.message && error.message.includes('No sessions')) {
+
+            if (error.message && (error.message.includes('No sessions') || error.message.includes('Bad MAC'))) {
               console.error(
                 `[${id}] Erro de sessão ao processar mensagem:`,
                 error.message,
               );
               console.log(
-                `[${id}] A sessão pode estar corrompida. Recomenda-se reconectar com QR Code.`,
+                `[${id}] Sessão corrompida detectada. Recomenda-se limpar a sessão e reconectar com QR Code.`,
               );
+              if (error.message.includes('Bad MAC')) {
+                console.warn(`[${id}] Encerrando socket devido a erro de criptografia recorrente.`);
+                try {
+                  if (activeSockets[id]) {
+                    await activeSockets[id].logout();
+                    delete activeSockets[id];
+                  }
+                } catch (logoutErr) {
+                  console.error(`[${id}] Erro ao fazer logout:`, logoutErr.message);
+                  delete activeSockets[id];
+                }
+              }
             } else {
               console.error(
                 `[${id}] Erro ao processar mensagem:`,
