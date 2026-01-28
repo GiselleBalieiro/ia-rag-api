@@ -26,8 +26,9 @@ ${pergunta}`,
     "https://openrouter.ai/api/v1/chat/completions",
     {
       model: "mistralai/mistral-7b-instruct",
-      temperature: 0.2, 
-      messages, 
+      temperature: 0.2,
+      max_tokens: 100,
+      messages,
     },
     {
       headers: {
