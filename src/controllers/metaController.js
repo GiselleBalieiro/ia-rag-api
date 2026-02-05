@@ -37,7 +37,15 @@ export async function createMetaConfig(req, res) {
             throw new Error('Falha ao inserir configuração Meta.');
         }
 
-        const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
+
+        let baseUrl = process.env.BASE_URL;
+
+        if (!baseUrl) {
+            const host = req.get('host');
+            const protocol = host.includes('localhost') ? 'http' : 'https';
+            baseUrl = `${protocol}://${host}`;
+        }
+
         const webhook_url = `${baseUrl}/webhook`;
 
         res.json({
