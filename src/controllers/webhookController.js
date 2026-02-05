@@ -77,7 +77,7 @@ export async function handleWebhook(req, res) {
                     const respostaIA = await perguntarIA(textBody, contexto, historico);
 
                     await axios.post(
-                        `https://graph.facebook.com/v21.0/${phone_number_id}/messages`,
+                        `https://graph.facebook.com/v22.0/${phone_number_id}/messages`,
                         {
                             messaging_product: 'whatsapp',
                             to: from,
