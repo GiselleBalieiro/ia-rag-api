@@ -7,7 +7,9 @@ import perguntasRouter from './src/routes/perguntarRouter.js';
 import whatsappRouter from './src/routes/whatsappRouter.js';
 import agentRouter from './src/routes/agentRouter.js';
 import healthRouter from './src/routes/healthRouter.js';
-import {restaurarConexoes} from './src/controllers/restoreSessions.js';
+import webhookRouter from './src/routes/webhookRouter.js';
+import metaRouter from './src/routes/metaRouter.js';
+import { restaurarConexoes } from './src/controllers/restoreSessions.js';
 
 dotenv.config();
 
@@ -35,6 +37,8 @@ app.use('/', whatsappRouter);
 app.use('/agent', agentRouter);
 app.use("/user", authRouter);
 app.use('/', healthRouter);
+app.use('/webhook', webhookRouter);
+app.use('/api/meta', metaRouter);
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
