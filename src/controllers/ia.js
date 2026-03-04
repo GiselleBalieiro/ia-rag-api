@@ -25,7 +25,7 @@ ${pergunta}`,
   const resposta = await axios.post(
     "https://openrouter.ai/api/v1/chat/completions",
     {
-      model: "openrouter/free",
+      model: "openai/gpt-3.5-turbo",
       temperature: 0.2,
       max_tokens: 100,
       messages,
@@ -44,5 +44,6 @@ ${pergunta}`,
   return resposta.data.choices[0].message.content;
 
 }
+
 
 
