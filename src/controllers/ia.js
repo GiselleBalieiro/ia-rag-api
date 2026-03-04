@@ -34,12 +34,14 @@ ${pergunta}`,
       headers: {
         Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
         "Content-Type": "application/json",
-        // "HTTP-Referer":
-        //   "https://agent-5mygpia1j-gisellebalieiros-projects.vercel.app/agents",
-        // "X-Title": "IA com RAG",
+        "HTTP-Referer": process.env.VERCEL_URL
+          ? `https://${process.env.VERCEL_URL}`
+          : "http://localhost:3000",
+        "X-Title": "IA Giselle"
       },
     }
   );
   return resposta.data.choices[0].message.content;
 
 }
+
