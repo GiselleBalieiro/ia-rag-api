@@ -25,7 +25,7 @@ ${pergunta}`,
   const resposta = await axios.post(
     "https://openrouter.ai/api/v1/chat/completions",
     {
-      model: "mistralai/mistral-7b-instruct",
+      model: "mistralai/mistral-7b-instruct:free",
       temperature: 0.2,
       max_tokens: 100,
       messages,
@@ -41,4 +41,5 @@ ${pergunta}`,
     }
   );
   return resposta.data.choices[0].message.content;
+
 }
