@@ -1,5 +1,4 @@
 import Baileys from '@whiskeysockets/baileys';
-import fs from 'fs';
 
 const { proto, initAuthCreds, BufferJSON } = Baileys;
 
@@ -46,9 +45,6 @@ export const useMongoDBAuthState = async (collection, sessionId = 'default') => 
 
   const creds = (await readData(sessionId)) || initAuthCreds();
 
-  const backupFile = `./session-backup-${sessionId}.json`;
-  const saveBackup = (data) => fs.writeFileSync(backupFile, JSON.stringify(data, null, 2));
-
   return {
     state: {
       creds,
@@ -81,7 +77,6 @@ export const useMongoDBAuthState = async (collection, sessionId = 'default') => 
     },
     saveCreds: async () => {
       await writeData(sessionId, creds);
-      saveBackup(creds); 
     },
     clearCreds: () => removeData(sessionId),
   };

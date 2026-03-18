@@ -33,7 +33,7 @@ export async function restaurarConexoes() {
         const promises = batch.map(async (idLegivel) => {
           try {
             console.log(`[Servidor] Iniciando conexão para o agente: ${idLegivel}`);
-            await startWhatsApp(idLegivel);
+            await startWhatsApp(idLegivel, false);
             console.log(`[Servidor] Agente ${idLegivel} processado com sucesso.`);
           } catch (err) {
             console.error(`[Servidor] Erro ao iniciar agente ${idLegivel}:`, err?.message ?? err);
@@ -101,5 +101,5 @@ export async function verificarSessoesAtivas() {
   }
 }
 
-// verificação automática sessions
-// setInterval(verificarSessoesAtivas, 5 * 60 * 1000);
+// Verificação automática a cada 5 minutos - reconecta sessões que caíram
+setInterval(verificarSessoesAtivas, 5 * 60 * 1000);

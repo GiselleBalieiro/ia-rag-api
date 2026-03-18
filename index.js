@@ -41,8 +41,13 @@ app.use('/webhook', webhookRouter);
 app.use('/api/meta', metaRouter);
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`Servidor rodando na porta ${PORT}`);
-  console.log('[Servidor] Restauração automática desabilitada. Use a API para conectar agentes.');
 
+  // Restaura sessões automaticamente ao iniciar
+  try {
+    await restaurarConexoes();
+  } catch (err) {
+    console.error('[Servidor] Erro ao restaurar conexões:', err.message);
+  }
 });
