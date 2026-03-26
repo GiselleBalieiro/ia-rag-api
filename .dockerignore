@@ -1,0 +1,8 @@
+node_modules
+.git
+.env
+.env.*
+sessions
+tokens
+*.log
+session-backup-*.json
