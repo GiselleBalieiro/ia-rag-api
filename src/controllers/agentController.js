@@ -1,4 +1,6 @@
 import { pool } from "../config/db.js";
+import { indexAgentTraining } from "../rag/indexAgent.js";
+import { removeAgentData } from "../rag/vectorStore.js";
 
 export async function getAgents(req, res) {
   try {
@@ -124,6 +126,13 @@ export async function updateAgent(req, res) {
       });
     }
 
+    // Re-indexa RAG se o training foi alterado
+    if (data.training) {
+      indexAgentTraining(id).catch(err =>
+        console.error(`[RAG] Erro ao re-indexar agente ${id}:`, err.message)
+      );
+    }
+
     res.json({
       success: true,
       message: "Agente atualizado com sucesso",
@@ -152,6 +161,11 @@ export async function deleteAgent(req, res) {
         message: "Agente não encontrado ou não pertence ao usuário",
       });
     }
+
+    // Remove dados RAG do agente deletado
+    removeAgentData(id).catch(err =>
+      console.error(`[RAG] Erro ao remover dados do agente ${id}:`, err.message)
+    );
 
     res.json({
       success: true,
