@@ -42,7 +42,7 @@ app.use('/api/meta', metaRouter);
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, async () => {
-  console.log(`Servidor rodando na porta ${PORT}`);
+  console.log(`Servidor rodando na porta ${PORT}${process.env.CLIENT_ID ? ` | Client: ${process.env.CLIENT_ID}` : ''}${process.env.AGENT_IDS ? ` | Agents: ${process.env.AGENT_IDS}` : ''}`);
 
   // Restaura sessões automaticamente ao iniciar
   try {
