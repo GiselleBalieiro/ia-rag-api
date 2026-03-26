@@ -6,6 +6,16 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 const CONCURRENT_RESTORES = parseInt(process.env.CONCURRENT_RESTORES || '1'); 
 const BATCH_DELAY = parseInt(process.env.BATCH_DELAY || '10000'); 
 
+function filterByClientAgents(ids) {
+  const agentIds = process.env.AGENT_IDS;
+  if (!agentIds || !agentIds.trim()) return ids; // Sem filtro = restaura todos
+
+  const allowed = agentIds.split(',').map(id => id.trim()).filter(Boolean);
+  const filtered = ids.filter(id => allowed.includes(String(id)));
+  console.log(`[Servidor] Filtro AGENT_IDS ativo: ${filtered.length}/${ids.length} agentes (CLIENT_ID: ${process.env.CLIENT_ID || 'default'})`);
+  return filtered;
+}
+
 export async function restaurarConexoes() {
   console.log('[Servidor] Servidor iniciado. Restaurando conexões ativas...');
   try {
@@ -13,12 +23,14 @@ export async function restaurarConexoes() {
 
     console.log('[Servidor] agentes raw:', JSON.stringify(agentes, null, 2));
 
-    const idsParaRestaurar = agentes.map(a => {
+    let idsParaRestaurar = agentes.map(a => {
       if (!a) return String(a);
 
       const id = a.id ?? a._id ?? a.agentId ?? a.sessionId ?? a.name;
       return id ?? JSON.stringify(a);
     });
+
+    idsParaRestaurar = filterByClientAgents(idsParaRestaurar);
 
     if (idsParaRestaurar.length > 0) {
       console.log(`[Servidor] Restaurando ${idsParaRestaurar.length} sessões em batches de ${CONCURRENT_RESTORES}: [${idsParaRestaurar.join(', ')}]`);
@@ -67,11 +79,13 @@ export async function verificarSessoesAtivas() {
       return;
     }
 
-    const idsParaVerificar = agentes.map(a => {
+    let idsParaVerificar = agentes.map(a => {
       if (!a) return String(a);
       const id = a.id ?? a._id ?? a.agentId ?? a.sessionId ?? a.name;
       return id ?? JSON.stringify(a);
     });
+
+    idsParaVerificar = filterByClientAgents(idsParaVerificar);
 
     console.log(`[Verificação] Verificando ${idsParaVerificar.length} agentes: [${idsParaVerificar.join(', ')}]`);
 
