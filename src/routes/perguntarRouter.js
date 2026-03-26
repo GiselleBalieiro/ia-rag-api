@@ -1,5 +1,5 @@
 import express from 'express';
-import { fetchContextoViaPHP } from '../controllers/function.js';
+import { fetchContextoRAG } from '../controllers/function.js';
 import { perguntarIA } from '../controllers/ia.js';
 
 const router = express.Router();
@@ -52,7 +52,7 @@ router.post('/perguntar', async (req, res) => {
 
     const historico = conversasAtivas[conversationKey];
 
-    const contexto = await fetchContextoViaPHP(id);
+    const contexto = await fetchContextoRAG(id, pergunta);
 
     const resposta = await perguntarIA(pergunta, contexto, historico);
 

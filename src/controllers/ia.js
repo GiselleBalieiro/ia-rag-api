@@ -27,7 +27,7 @@ ${pergunta}`,
     {
       model: "openai/gpt-3.5-turbo",
       temperature: 0.2,
-      max_tokens: 100,
+      max_tokens: 500,
       messages,
     },
     {
