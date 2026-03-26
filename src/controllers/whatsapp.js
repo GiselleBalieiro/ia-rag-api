@@ -12,11 +12,12 @@ const {
 import { useMongoDBAuthState } from './mongoAuthState.js';
 import Pino from 'pino';
 import qrcode from 'qrcode';
-import axios from 'axios';
+
 import { MongoClient } from 'mongodb';
 import { Boom } from '@hapi/boom';
 
-import { buscarAgentesParaRestaurar, getOwnerPhone } from './function.js';
+import { buscarAgentesParaRestaurar, getOwnerPhone, fetchContextoRAG } from './function.js';
+import { perguntarIA } from './ia.js';
 import {
   blockNumber,
   unblockNumber,
@@ -549,46 +550,35 @@ export async function startWhatsApp(id, allowNewSession = true, attempt = 0) {
             }
     
             try {
-    
+
                 const historyKey = from;
                 let userHistory = conversationHistory.get(historyKey) || [];
-    
+
                 userHistory.push({ role: 'user', content: text });
-    
+
                 if (userHistory.length > MAX_HISTORY_PER_USER) {
                   userHistory = userHistory.slice(userHistory.length - MAX_HISTORY_PER_USER);
                 }
 
                 conversationHistoryTimestamps.set(historyKey, Date.now());
-    
-                const response = await axios.post(
-                  'https://ia-rag-api.vercel.app/perguntar',
-                  { 
-                    pergunta: text,
-                    id: id,  
-                    userId: from, 
-                    historico: userHistory 
-                  },
-                  { headers: { 'Content-Type': 'application/json' } },
-                );
-        
-                const reply =
-                  response.data.resposta ||
-                  'Não consegui gerar uma resposta no momento.';
-    
+
+                // Chamada direta em processo (sem HTTP round-trip)
+                const contexto = await fetchContextoRAG(id, text);
+                const reply = await perguntarIA(text, contexto, userHistory);
+
                 userHistory.push({ role: 'assistant', content: reply });
-    
+
                 conversationHistory.set(historyKey, userHistory);
-    
+
                 await safeSendMessage(sock, id, from, { text: reply });
-        
+
                 console.log(`IA respondeu: ${reply}`);
-        
+
               } catch (err) {
                 console.error('Erro ao consultar IA:', err.message);
-    
+
                 await safeSendMessage(sock, id, from, {
-                  text: 'Não consegui falar com o servidor da IA agora.',
+                  text: 'Não consegui gerar uma resposta no momento.',
                 });
               }
           } catch (error) {
