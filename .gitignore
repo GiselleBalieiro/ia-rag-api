@@ -148,3 +148,4 @@ tokens
 .vercel
 
 sessions
+session-backup-*.json
