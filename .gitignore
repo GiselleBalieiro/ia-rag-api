@@ -149,3 +149,4 @@ tokens
 
 sessions
 session-backup-*.json
+test.js

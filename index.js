@@ -1,7 +1,6 @@
 import express from 'express';
 import dotenv from 'dotenv';
 import cors from 'cors';
-import rateLimit from 'express-rate-limit';
 
 import authRouter from "./src/routes/authRouter.js";
 import perguntasRouter from './src/routes/perguntarRouter.js';
@@ -15,6 +14,8 @@ import { restaurarConexoes } from './src/controllers/restoreSessions.js';
 dotenv.config();
 
 const app = express();
+
+app.set('trust proxy', 1);
 
 app.use(
   cors({
@@ -32,16 +33,6 @@ app.use(
 );
 
 app.use(express.json({ limit: '1mb' }));
-
-const aiLimiter = rateLimit({
-  windowMs: 60 * 1000,
-  max: 10,
-  message: { success: false, message: 'Muitas requisições. Tente novamente em 1 minuto.' },
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-
-app.use('/perguntar', aiLimiter);
 
 app.use('/', perguntasRouter);
 app.use('/', whatsappRouter);
